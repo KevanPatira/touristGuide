@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 const { width } = Dimensions.get('window');
 
 // ⚠️ PASTE YOUR API KEY HERE
-const API_KEY = '4f3e0fffe917327b826ee8237770c49c'; // Replace with your OpenWeatherMap key
+const API_KEY = ''; // Replace with your OpenWeatherMap key
 
 const WEATHER_ICONS = {
   Clear: 'sunny',
