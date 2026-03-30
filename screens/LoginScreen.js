@@ -9,8 +9,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 
 export default function LoginScreen({ onLoginSuccess }) {
   const [email, setEmail] = useState('');
@@ -26,6 +28,21 @@ export default function LoginScreen({ onLoginSuccess }) {
 
   const validatePassword = (password) => {
     return password.length >= 6;
+  };
+
+  const requestLocationPermission = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Location Access',
+          'Location permission is needed for Smart Navigation. You can enable it later in Settings.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.warn('Location permission request failed:', error);
+    }
   };
 
   const handleLogin = () => {
@@ -57,9 +74,11 @@ export default function LoginScreen({ onLoginSuccess }) {
 
     // Simulate API call
     setLoading(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       // Fake login logic - replace with real API later
       if (email === 'demo@travel.com' && password === '123456') {
+        // Request location permission before proceeding
+        await requestLocationPermission();
         onLoginSuccess();
       } else {
         setEmailError('Invalid email or password');
