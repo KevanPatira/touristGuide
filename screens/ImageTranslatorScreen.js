@@ -16,7 +16,7 @@ import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 
 // REPLACE WITH YOUR GOOGLE VISION API KEY
-const GOOGLE_VISION_KEY = 'AIzaSyAzarJuuFzjtw8Y6OnOYRbd1s4pX2wIOa4';
+const GOOGLE_VISION_KEY = '';
 
 // Helper: convert image URI to base64 using expo-file-system
 const uriToBase64 = async (uri) => {
