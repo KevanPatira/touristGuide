@@ -1,5 +1,5 @@
 // screens/CommunityScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,17 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
+  Image,
+  Share,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const tabs = ['Popular', 'Recent', 'Nearby'];
+const STORAGE_KEY = '@community_posts';
 
 const initialPosts = [
   {
@@ -19,6 +26,7 @@ const initialPosts = [
     time: '2h ago',
     location: 'Santorini, Greece',
     text: 'The sunset views from Oia are absolutely breathtaking! Arrive 2 hours early to grab a good spot.',
+    imageUri: null,
     likes: 142,
     comments: 28,
   },
@@ -28,51 +36,89 @@ const initialPosts = [
     time: '5h ago',
     location: 'Kyoto, Japan',
     text: 'Visit Fushimi Inari early morning to avoid the crowd. Try the street food near the entrance.',
+    imageUri: null,
     likes: 96,
     comments: 19,
   },
 ];
 
-function StatChip({ icon, value }) {
-  return (
-    <View style={styles.statChip}>
-      <Ionicons name={icon} size={16} color="#ff7a45" />
-      <Text style={styles.statText}>{value}</Text>
-    </View>
-  );
-}
-
 function PostCard({ post }) {
+  const [liked, setLiked] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [likesCount, setLikesCount] = useState(post.likes);
+
+  const toggleLike = () => {
+    if (liked) {
+      setLikesCount(prev => prev - 1);
+    } else {
+      setLikesCount(prev => prev + 1);
+    }
+    setLiked(!liked);
+  };
+
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `Check out this travel tip from ${post.name}: "${post.text}" - via TouristGuide App`,
+      });
+    } catch (error) {
+      console.log('Error sharing:', error);
+    }
+  };
+
   return (
     <View style={styles.postCard}>
       {/* header */}
       <View style={styles.postHeader}>
-        <View style={styles.avatar} />
+        <View style={styles.avatar}>
+          <Text style={styles.avatarInitials}>{post.name[0]}</Text>
+        </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.postName}>{post.name}</Text>
           <Text style={styles.postMeta}>
             {post.time} • {post.location}
           </Text>
         </View>
+        <TouchableOpacity>
+          <Ionicons name="ellipsis-horizontal" size={20} color="#888" />
+        </TouchableOpacity>
       </View>
 
       {/* body */}
       <View style={styles.postBody}>
-        <Text style={styles.postText}>{post.text}</Text>
+        {post.text ? <Text style={styles.postText}>{post.text}</Text> : null}
+        
+        {/* Render Image if exists */}
+        {post.imageUri && (
+          <Image 
+            source={{ uri: post.imageUri }} 
+            style={styles.postImage} 
+            resizeMode="cover"
+          />
+        )}
       </View>
 
       {/* actions */}
       <View style={styles.postActions}>
-        <StatChip icon="heart-outline" value={post.likes} />
-        <StatChip icon="chatbubble-ellipses-outline" value={post.comments} />
-        <View style={{ flexDirection: 'row' }}>
-          <Ionicons
-            name="share-outline"
-            size={18}
-            color="#888"
-            style={{ marginRight: 4 }}
-          />
-          <Ionicons name="bookmark-outline" size={18} color="#888" />
+        <View style={{ flexDirection: 'row', gap: 16 }}>
+          <TouchableOpacity style={styles.statChip} onPress={toggleLike}>
+            <Ionicons name={liked ? "heart" : "heart-outline"} size={20} color={liked ? "#e91e63" : "#888"} />
+            <Text style={[styles.statText, liked && { color: "#e91e63" }]}>{likesCount}</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.statChip}>
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color="#888" />
+            <Text style={styles.statText}>{post.comments}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 16 }}>
+          <TouchableOpacity onPress={handleShare}>
+            <Ionicons name="share-outline" size={20} color="#888" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setSaved(!saved)}>
+            <Ionicons name={saved ? "bookmark" : "bookmark-outline"} size={20} color={saved ? "#ff7a45" : "#888"} />
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -82,45 +128,114 @@ function PostCard({ post }) {
 export default function CommunityScreen() {
   const [activeTab, setActiveTab] = useState('Popular');
   const [text, setText] = useState('');
+  const [imageUri, setImageUri] = useState(null);
   const [posts, setPosts] = useState(initialPosts);
 
+  // Load from local storage to simulate backend persistence
+  useEffect(() => {
+    loadPosts();
+  }, []);
+
+  const loadPosts = async () => {
+    try {
+      const stored = await AsyncStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        setPosts(JSON.parse(stored));
+      }
+    } catch(e) {}
+  };
+
+  const savePosts = async (newPosts) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newPosts));
+    } catch(e) {}
+  };
+
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setImageUri(result.assets[0].uri);
+    }
+  };
+
   const handlePost = () => {
-    if (!text.trim()) return;
+    if (!text.trim() && !imageUri) return;
+    
     const newPost = {
       id: Date.now().toString(),
       name: 'You',
       time: 'Just now',
-      location: 'Unknown location',
-      text,
+      location: 'My Location',
+      text: text,
+      imageUri: imageUri,
       likes: 0,
       comments: 0,
     };
-    setPosts([newPost, ...posts]);
+    
+    const updated = [newPost, ...posts];
+    setPosts(updated);
+    savePosts(updated);
+    
+    // Reset inputs
     setText('');
+    setImageUri(null);
   };
 
   const renderPost = ({ item }) => <PostCard post={item} />;
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       {/* header */}
       <View style={styles.headerArea}>
         <Text style={styles.title}>Community</Text>
         <Text style={styles.subtitle}>Share tips with fellow travelers</Text>
 
-        {/* input */}
-        <View style={styles.inputRow}>
-          <Ionicons name="create-outline" size={20} color="#888" />
-          <TextInput
-            placeholder="Share a travel tip..."
-            placeholderTextColor="#777"
-            style={styles.input}
-            value={text}
-            onChangeText={setText}
-          />
-          <TouchableOpacity style={styles.postButton} onPress={handlePost}>
-            <Text style={styles.postButtonText}>Post</Text>
-          </TouchableOpacity>
+        {/* Input box */}
+        <View style={styles.inputContainer}>
+          <View style={styles.inputRow}>
+            <View style={styles.smallAvatar}><Text style={{color: '#fff', fontSize: 12}}>Y</Text></View>
+            <TextInput
+              placeholder="Share a travel tip or photo..."
+              placeholderTextColor="#777"
+              style={styles.input}
+              value={text}
+              onChangeText={setText}
+              multiline
+            />
+          </View>
+          
+          {imageUri && (
+            <View style={styles.imagePreviewContainer}>
+              <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+              <TouchableOpacity style={styles.removeImageBtn} onPress={() => setImageUri(null)}>
+                <Ionicons name="close-circle" size={24} color="#ff4444" />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={styles.inputToolbar}>
+            <TouchableOpacity style={styles.iconButton} onPress={pickImage}>
+              <Ionicons name="image-outline" size={22} color="#ff7a45" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.iconButton}>
+              <Ionicons name="location-outline" size={22} color="#ff7a45" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.postButton, (!text.trim() && !imageUri) && { opacity: 0.5 }]} 
+              onPress={handlePost}
+              disabled={!text.trim() && !imageUri}
+            >
+              <Text style={styles.postButtonText}>Post</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* tabs */}
@@ -131,12 +246,7 @@ export default function CommunityScreen() {
               style={[styles.tabChip, activeTab === t && styles.tabChipActive]}
               onPress={() => setActiveTab(t)}
             >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === t && styles.tabTextActive,
-                ]}
-              >
+              <Text style={[styles.tabText, activeTab === t && styles.tabTextActive]}>
                 {t}
               </Text>
             </TouchableOpacity>
@@ -149,10 +259,10 @@ export default function CommunityScreen() {
         data={posts}
         keyExtractor={(item) => item.id}
         renderItem={renderPost}
-        contentContainerStyle={{ padding: 20, paddingBottom: 32 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -161,84 +271,148 @@ const styles = StyleSheet.create({
 
   headerArea: {
     paddingTop: 60,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 12,
     backgroundColor: '#131b33',
   },
   title: { color: '#ffffff', fontSize: 24, fontWeight: '700' },
   subtitle: { color: '#b0b4c3', fontSize: 13, marginTop: 4 },
 
-  inputRow: {
-    marginTop: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
+  inputContainer: {
     backgroundColor: '#1f2740',
     borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    marginTop: 16,
+    padding: 12,
   },
-  input: { flex: 1, marginHorizontal: 6, color: '#ffffff', fontSize: 14 },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 40,
+  },
+  smallAvatar: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#ffb38a',
+    justifyContent: 'center', alignItems: 'center',
+    marginRight: 10,
+  },
+  input: { 
+    flex: 1, color: '#ffffff', fontSize: 14,
+    maxHeight: 100, alignSelf: 'flex-start'
+  },
+  inputToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#2b3350',
+    paddingTop: 12,
+  },
+  iconButton: {
+    marginRight: 16,
+  },
   postButton: {
     backgroundColor: '#ff7a45',
     borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginLeft: 'auto',
   },
   postButtonText: { color: '#ffffff', fontWeight: '600', fontSize: 13 },
+  
+  imagePreviewContainer: {
+    marginTop: 10,
+    position: 'relative',
+    alignSelf: 'flex-start',
+  },
+  imagePreview: {
+    width: 200,
+    height: 150,
+    borderRadius: 12,
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+  },
 
   tabRow: {
     flexDirection: 'row',
-    marginTop: 12,
+    marginTop: 16,
   },
   tabChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 999,
     marginRight: 8,
-    backgroundColor: '#1f2740',
+    backgroundColor: '#1a2038',
+    borderWidth: 1,
+    borderColor: '#2b3350',
   },
   tabChipActive: {
-    backgroundColor: '#ff7a45',
+    backgroundColor: '#ff7a4522',
+    borderColor: '#ff7a45',
   },
-  tabText: { color: '#d0d3e0', fontSize: 12 },
-  tabTextActive: { color: '#ffffff' },
+  tabText: { color: '#888', fontSize: 13 },
+  tabTextActive: { color: '#ff7a45', fontWeight: '600' },
 
   postCard: {
     backgroundColor: '#161b2b',
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#1e2540',
   },
   postHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   avatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#ffb38a',
-    marginRight: 10,
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  postName: { color: '#ffffff', fontSize: 14, fontWeight: '600' },
-  postMeta: { color: '#b0b4c3', fontSize: 11, marginTop: 2 },
+  avatarInitials: {
+    color: '#d45a1b',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  postName: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+  postMeta: { color: '#b0b4c3', fontSize: 12, marginTop: 2 },
 
-  postBody: { marginTop: 10 },
-  postText: { color: '#e1e3f0', fontSize: 13 },
+  postBody: { marginTop: 14 },
+  postText: { color: '#e1e3f0', fontSize: 14, lineHeight: 20 },
+  postImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    marginTop: 12,
+    backgroundColor: '#111728',
+  },
 
   postActions: {
     flexDirection: 'row',
-    marginTop: 10,
+    marginTop: 16,
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#252a3f',
+    paddingTop: 12,
   },
   statChip: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   statText: {
-    color: '#c3c6d6',
-    fontSize: 12,
-    marginLeft: 4,
+    color: '#888',
+    fontSize: 13,
+    marginLeft: 6,
+    fontWeight: '500',
   },
 });

@@ -79,7 +79,7 @@ export default function LoginScreen({ onLoginSuccess }) {
       if (email === 'demo@travel.com' && password === '123456') {
         // Request location permission before proceeding
         await requestLocationPermission();
-        onLoginSuccess();
+        onLoginSuccess({ email, password });
       } else {
         setEmailError('Invalid email or password');
         setPasswordError('Invalid email or password');

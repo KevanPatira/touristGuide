@@ -66,12 +66,16 @@ function ExploreStack() {
         name="PlaceDetail"
         component={PlaceDetailScreen}
       />
+      <ExploreStackNav.Screen
+        name="SmartNavigation"
+        component={SmartNavigationScreen}
+      />
     </ExploreStackNav.Navigator>
   );
 }
 
 
-function MainTabs() {
+function MainTabs({ userEmail, userPassword, onLogout }) {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -96,16 +100,38 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeStack} />
+      <Tab.Screen name="Home">
+        {(props) => <HomeStack {...props} userEmail={userEmail} />}
+      </Tab.Screen>
       <Tab.Screen name="Explore" component={ExploreStack} />
       <Tab.Screen name="Community" component={CommunityScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Profile">
+        {(props) => (
+          <ProfileScreen
+            {...props}
+            userEmail={userEmail}
+            userPassword={userPassword}
+            onLogout={onLogout}
+          />
+        )}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 }
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false); // later replace with real auth
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userData, setUserData] = useState({ email: '', password: '' });
+
+  const handleLogin = ({ email, password }) => {
+    setUserData({ email, password });
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setUserData({ email: '', password: '' });
+  };
 
   return (
     <NavigationContainer>
@@ -113,14 +139,21 @@ export default function App() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {isLoggedIn ? (
           <Stack.Screen name="MainTabs">
-            {(props) => <MainTabs {...props} />}
+            {(props) => (
+              <MainTabs
+                {...props}
+                userEmail={userData.email}
+                userPassword={userData.password}
+                onLogout={handleLogout}
+              />
+            )}
           </Stack.Screen>
         ) : (
           <Stack.Screen name="Login">
             {(props) => (
               <LoginScreen
                 {...props}
-                onLoginSuccess={() => setIsLoggedIn(true)}
+                onLoginSuccess={handleLogin}
               />
             )}
           </Stack.Screen>
