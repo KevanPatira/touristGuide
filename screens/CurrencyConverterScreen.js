@@ -276,30 +276,34 @@ const styles = StyleSheet.create({
     padding: 20, 
     borderRadius: 20 
   },
-  currencyInfo: { flex: 1 },
+  currencyInfo: { flex: 1, marginRight: 10 },
   currencyCode: { 
     color: '#ffffff', 
-    fontSize: 22, 
+    fontSize: 20, 
     fontWeight: '800' 
   },
   currencyName: { 
     color: '#b0b4c3', 
-    fontSize: 13, 
-    marginTop: 2 
+    fontSize: 12, 
+    marginTop: 2,
+    flexWrap: 'wrap'
   },
   inputContainer: { 
     flexDirection: 'row', 
-    alignItems: 'center' 
+    alignItems: 'center',
+    flex: 1.5,
+    justifyContent: 'flex-end',
   },
   amountInput: { 
     color: '#ffffff', 
-    fontSize: 28, 
+    fontSize: 24, 
     fontWeight: '800', 
     textAlign: 'right', 
-    minWidth: 120 
+    minWidth: 100,
+    flex: 1,
   },
   fromInput: { 
-    fontSize: 36, 
+    fontSize: 28, 
     color: '#ff7a45' 
   },
   swapButton: { 

@@ -1,200 +1,44 @@
-// screens/LoginScreen.js
-import React, { useState } from 'react';
+// screens/LoginScreen.js — DEV MODE: Quick-access login (no auth)
+// TODO: Re-enable full login form with validation when ready
+import React from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 
 export default function LoginScreen({ onLoginSuccess }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [emailError, setEmailError] = useState('');
-  const [passwordError, setPasswordError] = useState('');
 
-  const validateEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  const validatePassword = (password) => {
-    return password.length >= 6;
-  };
-
-  const requestLocationPermission = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Location Access',
-          'Location permission is needed for Smart Navigation. You can enable it later in Settings.',
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (error) {
-      console.warn('Location permission request failed:', error);
-    }
-  };
-
-  const handleLogin = () => {
-    // Reset errors
-    setEmailError('');
-    setPasswordError('');
-
-    let hasError = false;
-
-    // Validate email
-    if (!email.trim()) {
-      setEmailError('Email is required');
-      hasError = true;
-    } else if (!validateEmail(email)) {
-      setEmailError('Please enter a valid email');
-      hasError = true;
-    }
-
-    // Validate password
-    if (!password.trim()) {
-      setPasswordError('Password is required');
-      hasError = true;
-    } else if (!validatePassword(password)) {
-      setPasswordError('Password must be at least 6 characters');
-      hasError = true;
-    }
-
-    if (hasError) return;
-
-    // Simulate API call
-    setLoading(true);
-    setTimeout(async () => {
-      // Fake login logic - replace with real API later
-      if (email === 'demo@travel.com' && password === '123456') {
-        // Request location permission before proceeding
-        await requestLocationPermission();
-        onLoginSuccess({ email, password });
-      } else {
-        setEmailError('Invalid email or password');
-        setPasswordError('Invalid email or password');
-      }
-      setLoading(false);
-    }, 1500);
-  };
-
-  const getPasswordStrength = (password) => {
-    if (password.length >= 8) return 'strong';
-    if (password.length >= 6) return 'medium';
-    return 'weak';
+  const handleQuickLogin = () => {
+    onLoginSuccess({ email: 'dev@team.com', password: 'dev' });
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>
-          Sign in to access your travel tools
-        </Text>
-      </View>
-
-      {/* Email Input */}
-      <View style={styles.inputGroup}>
-        <View style={styles.inputContainer}>
-          <Ionicons name="mail-outline" size={20} color="#888" />
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#777"
-            value={email}
-            onChangeText={(text) => {
-              setEmail(text);
-              if (emailError) setEmailError('');
-            }}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            editable={!loading}
-          />
+    <View style={styles.container}>
+      {/* Logo / branding area */}
+      <View style={styles.topSection}>
+        <View style={styles.logoBg}>
+          <Ionicons name="earth" size={56} color="#ff7a45" />
         </View>
-        {emailError ? (
-          <Text style={styles.errorText}>{emailError}</Text>
-        ) : null}
+        <Text style={styles.appName}>TouristGuide</Text>
+        <Text style={styles.tagline}>Explore. Navigate. Discover.</Text>
       </View>
 
-      {/* Password Input */}
-      <View style={styles.inputGroup}>
-        <View style={styles.inputContainer}>
-          <Ionicons name="lock-closed-outline" size={20} color="#888" />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#777"
-            value={password}
-            onChangeText={(text) => {
-              setPassword(text);
-              if (passwordError) setPasswordError('');
-            }}
-            secureTextEntry
-            editable={!loading}
-          />
+      {/* Quick enter section */}
+      <View style={styles.bottomSection}>
+        <TouchableOpacity style={styles.enterButton} onPress={handleQuickLogin} activeOpacity={0.8}>
+          <Ionicons name="log-in-outline" size={24} color="#fff" />
+          <Text style={styles.enterText}>Enter App</Text>
+        </TouchableOpacity>
+
+        <View style={styles.devBadge}>
+          <Ionicons name="code-slash" size={14} color="#ff7a45" />
+          <Text style={styles.devText}>Dev mode — login disabled for faster testing</Text>
         </View>
-        {passwordError ? (
-          <Text style={styles.errorText}>{passwordError}</Text>
-        ) : null}
-        
-        {/* Password strength indicator */}
-        {password && !passwordError && (
-          <View style={styles.strengthBar}>
-            <View 
-              style={[
-                styles.strengthFill,
-                { width: `${Math.min((password.length / 12) * 100, 100)}%` }
-              ]}
-            />
-            <Text style={styles.strengthText}>
-              {getPasswordStrength(password).toUpperCase()}
-            </Text>
-          </View>
-        )}
       </View>
-
-      {/* Login Button */}
-      <TouchableOpacity 
-        style={[
-          styles.loginButton, 
-          (emailError || passwordError || !email || !password) && styles.loginButtonDisabled
-        ]}
-        onPress={handleLogin}
-        disabled={loading || !email || !password}
-      >
-        {loading ? (
-          <ActivityIndicator color="#ffffff" />
-        ) : (
-          <Text style={styles.loginButtonText}>Sign In</Text>
-        )}
-      </TouchableOpacity>
-
-      {/* Demo credentials */}
-      <View style={styles.demoInfo}>
-        <Text style={styles.demoText}>
-          Demo: demo@travel.com / 123456
-        </Text>
-      </View>
-
-      {/* Forgot password */}
-      <TouchableOpacity style={styles.forgotPassword}>
-        <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-      </TouchableOpacity>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -202,101 +46,75 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#050b18',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  title: {
-    color: '#ffffff',
-    fontSize: 32,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  subtitle: {
-    color: '#b0b4c3',
-    fontSize: 16,
-    textAlign: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 28,
+    paddingBottom: 60,
   },
 
-  inputGroup: {
+  // Top branding
+  topSection: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoBg: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#ff7a4518',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 20,
   },
-  inputContainer: {
+  appName: {
+    color: '#ffffff',
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  tagline: {
+    color: '#b0b4c3',
+    fontSize: 15,
+    marginTop: 6,
+  },
+
+  // Bottom action
+  bottomSection: {
+    alignItems: 'center',
+  },
+  enterButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161b2b',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  input: {
-    flex: 1,
-    color: '#ffffff',
-    fontSize: 16,
-    marginLeft: 12,
-  },
-  errorText: {
-    color: '#ff4444',
-    fontSize: 13,
-    marginTop: 6,
-    marginLeft: 4,
-  },
-
-  strengthBar: {
-    height: 4,
-    backgroundColor: '#1f2740',
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  strengthFill: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
-    borderRadius: 2,
-  },
-  strengthText: {
-    color: '#b0b4c3',
-    fontSize: 12,
-    marginTop: 4,
-  },
-
-  loginButton: {
+    justifyContent: 'center',
     backgroundColor: '#ff7a45',
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 20,
+    width: '100%',
+    borderRadius: 18,
+    paddingVertical: 18,
+    gap: 10,
+    shadowColor: '#ff7a45',
+    shadowOpacity: 0.35,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 14,
+    elevation: 8,
   },
-  loginButtonDisabled: {
-    backgroundColor: '#1f2740',
-  },
-  loginButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
+  enterText: {
+    color: '#fff',
+    fontSize: 20,
     fontWeight: '700',
   },
 
-  demoInfo: {
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  demoText: {
-    color: '#b0b4c3',
-    fontSize: 13,
-  },
-
-  forgotPassword: {
+  devBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
     marginTop: 20,
+    backgroundColor: '#ff7a4512',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    gap: 6,
   },
-  forgotPasswordText: {
-    color: '#ff7a45',
-    fontSize: 14,
-    fontWeight: '600',
+  devText: {
+    color: '#777',
+    fontSize: 12,
   },
 });

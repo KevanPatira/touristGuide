@@ -2,9 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Switch, Alert, KeyboardAvoidingView, Platform,
+  ScrollView, Switch, Alert, KeyboardAvoidingView, Platform, Image
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PROFILE_KEY = '@tg_profile';
@@ -34,6 +35,7 @@ export default function ProfileScreen({ userEmail, userPassword, onLogout }) {
   const [username, setUsername] = useState('');
   const [gender, setGender] = useState('');
   const [age, setAge] = useState('');
+  const [profileImage, setProfileImage] = useState(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
 
   // Privacy
@@ -62,14 +64,27 @@ export default function ProfileScreen({ userEmail, userPassword, onLogout }) {
         setUsername(parsed.username || '');
         setGender(parsed.gender || '');
         setAge(parsed.age || '');
+        setProfileImage(parsed.profileImage || null);
       }
     } catch (_) {}
     setProfileLoaded(true);
   };
 
+  const handlePickDP = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+    });
+    if (!result.canceled) {
+      setProfileImage(result.assets[0].uri);
+    }
+  };
+
   const saveProfile = async () => {
     try {
-      await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ username, gender, age }));
+      await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ username, gender, age, profileImage }));
       Alert.alert('Saved', 'Profile updated successfully!');
     } catch (_) {
       Alert.alert('Error', 'Could not save profile.');
@@ -151,9 +166,16 @@ export default function ProfileScreen({ userEmail, userPassword, onLogout }) {
         >
           {/* Avatar + info */}
           <View style={styles.avatarSection}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
+            <TouchableOpacity style={styles.avatar} onPress={handlePickDP}>
+              {profileImage ? (
+                <Image source={{ uri: profileImage }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
+              <View style={styles.cameraIcon}>
+                <Ionicons name="camera" size={16} color="#fff" />
+              </View>
+            </TouchableOpacity>
             <Text style={styles.name}>{username || 'Set your username'}</Text>
             <Text style={styles.email}>{userEmail || 'No email'}</Text>
             <View style={styles.publicBadge}>
@@ -385,8 +407,23 @@ const styles = StyleSheet.create({
     width: 80, height: 80, borderRadius: 40,
     backgroundColor: '#ff7a45',
     justifyContent: 'center', alignItems: 'center',
+    position: 'relative',
   },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 40 },
   avatarText: { color: '#fff', fontSize: 28, fontWeight: '700' },
+  cameraIcon: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#1a2038',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#050b18',
+  },
   name: {
     color: '#ffffff', fontSize: 18, fontWeight: '600',
     marginTop: 12,

@@ -10,10 +10,13 @@ import {
   Image,
   Share,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const tabs = ['Popular', 'Recent', 'Nearby'];
@@ -130,6 +133,8 @@ export default function CommunityScreen() {
   const [text, setText] = useState('');
   const [imageUri, setImageUri] = useState(null);
   const [posts, setPosts] = useState(initialPosts);
+  const [postLocation, setPostLocation] = useState('My Location');
+  const [isFetchingLocation, setIsFetchingLocation] = useState(false);
 
   // Load from local storage to simulate backend persistence
   useEffect(() => {
@@ -163,6 +168,29 @@ export default function CommunityScreen() {
     }
   };
 
+  const handleGetLocation = async () => {
+    setIsFetchingLocation(true);
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission denied', 'Could not access location.');
+        setIsFetchingLocation(false);
+        return;
+      }
+      let loc = await Location.getCurrentPositionAsync({});
+      let geocode = await Location.reverseGeocodeAsync({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude
+      });
+      if (geocode && geocode.length > 0) {
+        setPostLocation(`${geocode[0].city || geocode[0].region}, ${geocode[0].countryCode || geocode[0].country}`);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to get location');
+    }
+    setIsFetchingLocation(false);
+  };
+
   const handlePost = () => {
     if (!text.trim() && !imageUri) return;
     
@@ -170,7 +198,7 @@ export default function CommunityScreen() {
       id: Date.now().toString(),
       name: 'You',
       time: 'Just now',
-      location: 'My Location',
+      location: postLocation,
       text: text,
       imageUri: imageUri,
       likes: 0,
@@ -184,6 +212,7 @@ export default function CommunityScreen() {
     // Reset inputs
     setText('');
     setImageUri(null);
+    setPostLocation('My Location');
   };
 
   const renderPost = ({ item }) => <PostCard post={item} />;
@@ -225,9 +254,19 @@ export default function CommunityScreen() {
             <TouchableOpacity style={styles.iconButton} onPress={pickImage}>
               <Ionicons name="image-outline" size={22} color="#ff7a45" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton}>
-              <Ionicons name="location-outline" size={22} color="#ff7a45" />
-            </TouchableOpacity>
+            
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TouchableOpacity style={styles.iconButton} onPress={handleGetLocation}>
+                <Ionicons name="location-outline" size={22} color={postLocation !== 'My Location' ? "#4CAF50" : "#ff7a45"} />
+              </TouchableOpacity>
+              {isFetchingLocation ? (
+                <ActivityIndicator size="small" color="#ff7a45" />
+              ) : postLocation !== 'My Location' ? (
+                <Text style={{ color: '#4CAF50', fontSize: 11, marginRight: 8, maxWidth: 100 }} numberOfLines={1}>
+                  {postLocation}
+                </Text>
+              ) : null}
+            </View>
             <TouchableOpacity 
               style={[styles.postButton, (!text.trim() && !imageUri) && { opacity: 0.5 }]} 
               onPress={handlePost}
