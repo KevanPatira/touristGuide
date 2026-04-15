@@ -11,12 +11,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Project Settings → General → Your apps → Web app → Config
 // ═══════════════════════════════════════════════════════════
 const firebaseConfig = {
-  apiKey: "AIzaSyAJmqss-Vvu9zS_7P3WvO04W35oApVm3KU",
-  authDomain: "touristguide-20.firebaseapp.com",
-  projectId: "touristguide-20",
-  storageBucket: "touristguide-20.firebasestorage.app",
-  messagingSenderId: "1079908798128",
-  appId: "1:1079908798128:web:953b848d79540f30233575",
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: "",
 };
 
 // Initialize Firebase (prevent re-initialization)
