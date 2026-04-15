@@ -8,11 +8,18 @@ import {
   TextInput,
   FlatList,
   TouchableOpacity,
-  Animated,
   Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { INDIA_STATES, INDIA_PLACES } from '../data/indiaPlaces';
+import { useTheme } from '../constants/ThemeContext';
+import { useAuth } from '../constants/AuthContext';
+import useNotifications from '../hooks/useNotifications';
+
+import GlassCard from '../components/ui/GlassCard';
+import StaggerRevealText from '../components/ui/StaggerRevealText';
+import FloatingParticles from '../components/ui/FloatingParticles';
+import PressableGoldButton from '../components/ui/PressableGoldButton';
 
 const filters = ['All', 'Heritage', 'Nature', 'Temple', 'Beach', 'Wildlife'];
 
@@ -25,40 +32,48 @@ const CATEGORY_ICONS = {
   All: 'apps',
 };
 
-function PlaceCard({ place, index, onPress }) {
+function PlaceCard({ place, onPress }) {
+  const { theme } = useTheme();
   const categoryIcon = CATEGORY_ICONS[place.category] || 'location';
 
   return (
-    <TouchableOpacity style={styles.placeCard} onPress={onPress} activeOpacity={0.7}>
+    <GlassCard style={styles.placeCard} onPress={onPress}>
       {/* Rank badge */}
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>#{place.rank} Top Rated</Text>
+      <View style={[styles.badge, { backgroundColor: theme.colors.copper + '22' }]}>
+        <Text style={[styles.badgeText, { color: theme.colors.copper }]}>#{place.rank} Top Rated</Text>
       </View>
 
       {/* Place name + city */}
-      <Text style={styles.placeName}>{place.name}</Text>
-      <Text style={styles.placeCity}>{place.city}, {place.state}</Text>
+      <Text style={[theme.typography.headingM, { color: theme.colors.ivory }]}>{place.name}</Text>
+      <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 2 }]}>
+        {place.city}, {place.state}
+      </Text>
 
       {/* Description */}
-      <Text style={styles.placeDesc} numberOfLines={2}>{place.description}</Text>
+      <Text style={[theme.typography.body, { color: theme.colors.parchment, marginTop: 6 }]} numberOfLines={2}>
+        {place.description}
+      </Text>
 
       {/* Category + navigate row */}
       <View style={styles.footerRow}>
-        <View style={styles.categoryChip}>
-          <Ionicons name={categoryIcon} size={13} color={place.color} />
-          <Text style={[styles.categoryText, { color: place.color }]}>{place.category}</Text>
+        <View style={[styles.categoryChip, { backgroundColor: theme.colors.midnight }]}>
+          <Ionicons name={categoryIcon} size={13} color={theme.colors.gold} />
+          <Text style={[styles.categoryText, { color: theme.colors.gold }]}>{place.category}</Text>
         </View>
         <View style={styles.viewMapBtn}>
-          <Ionicons name="navigate" size={14} color="#ff7a45" />
-          <Text style={styles.viewMapText}>View on Map</Text>
+          <Ionicons name="navigate" size={14} color={theme.colors.gold} />
+          <Text style={[theme.typography.label, { color: theme.colors.gold, marginLeft: 4 }]}>View on Map</Text>
         </View>
       </View>
-    </TouchableOpacity>
+    </GlassCard>
   );
 }
 
 export default function ExploreScreen() {
+  const { theme } = useTheme();
   const navigation = useNavigation();
+  const { user } = useAuth();
+  const { unreadCount } = useNotifications(user?.uid);
   const [searchText, setSearchText] = useState('');
   const [selectedState, setSelectedState] = useState(null);
   const [activeFilter, setActiveFilter] = useState('All');
@@ -99,12 +114,8 @@ export default function ExploreScreen() {
   const handleGo = () => {
     Keyboard.dismiss();
     if (searchText.trim().length === 0) return;
-    // Try exact or partial match
-    const match = INDIA_STATES.find(
-      s => s.toLowerCase() === searchText.toLowerCase()
-    ) || INDIA_STATES.find(
-      s => s.toLowerCase().includes(searchText.toLowerCase())
-    );
+    const match = INDIA_STATES.find(s => s.toLowerCase() === searchText.toLowerCase()) || 
+                  INDIA_STATES.find(s => s.toLowerCase().includes(searchText.toLowerCase()));
     if (match) {
       selectState(match);
     }
@@ -118,101 +129,101 @@ export default function ExploreScreen() {
   };
 
   const handlePlaceTap = (place) => {
-    navigation.navigate('SmartNavigation', {
-      highlightPlace: {
-        name: place.name,
-        lat: place.lat,
-        lng: place.lng,
-        state: place.state,
-        city: place.city,
-        category: place.category,
-        description: place.description,
-        rank: place.rank,
-        icon: place.icon,
-        color: place.color,
-      },
-    });
+    navigation.navigate('SmartNavigation', { highlightPlace: place });
   };
 
-  const renderPlace = ({ item, index }) => (
-    <PlaceCard
-      place={item}
-      index={index}
-      onPress={() => handlePlaceTap(item)}
-    />
-  );
-
   return (
-    <View style={styles.container}>
-      {/* header */}
-      <View style={styles.headerArea}>
-        <Text style={styles.title}>Explore India</Text>
-        <Text style={styles.subtitle}>
-          Discover top tourist spots across 32 states & territories
-        </Text>
+    <View style={[styles.container, { backgroundColor: theme.colors.obsidian }]}>
+      <FloatingParticles count={15} />
 
-        {/* search bar */}
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color="#ff7a45" />
-          <TextInput
-            placeholder="Enter a state (Rajasthan, Kerala...)"
-            placeholderTextColor="#666"
-            style={styles.searchInput}
-            value={searchText}
-            onChangeText={handleSearchChange}
-            onFocus={() => setShowSuggestions(true)}
-            onSubmitEditing={handleGo}
-            returnKeyType="search"
-          />
-          {searchText.length > 0 && (
-            <TouchableOpacity onPress={clearSearch} style={{ padding: 4 }}>
-              <Ionicons name="close-circle" size={18} color="#555" />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity style={styles.goButton} onPress={handleGo}>
-            <Text style={styles.goText}>Go</Text>
+      {/* header */}
+      <View style={[styles.headerArea, { backgroundColor: theme.colors.midnight }]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <View style={{ flex: 1 }}>
+            <StaggerRevealText text="Explore India" style={[theme.typography.displayS, { color: theme.colors.gold }]} />
+            <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 4 }]}>
+              Discover top tourist spots across 32 states & territories
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.chatIconBtn, { backgroundColor: theme.colors.obsidian }]}
+            onPress={() => navigation.navigate('Notifications')}
+          >
+            <Ionicons name="notifications-outline" size={20} color={theme.colors.gold} />
+            {unreadCount > 0 && (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
+        </View>
+
+        {/* search box */}
+        <View style={styles.searchBoxWrapper}>
+          <GlassCard style={[styles.searchBox, { backgroundColor: theme.colors.obsidian }]} glowOnPress={false}>
+            <Ionicons name="search" size={18} color={theme.colors.gold} />
+            <TextInput
+              placeholder="Enter a state (Rajasthan, Kerala...)"
+              placeholderTextColor={theme.colors.parchment}
+              style={[theme.typography.body, styles.searchInput, { color: theme.colors.ivory }]}
+              value={searchText}
+              onChangeText={handleSearchChange}
+              onFocus={() => setShowSuggestions(true)}
+              onSubmitEditing={handleGo}
+              returnKeyType="search"
+            />
+            {searchText.length > 0 && (
+              <TouchableOpacity onPress={clearSearch} style={{ padding: 4 }}>
+                <Ionicons name="close-circle" size={18} color={theme.colors.parchment} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={handleGo} style={{ paddingHorizontal: 12 }}>
+              <Ionicons name="arrow-forward-circle" size={32} color={theme.colors.gold} />
+            </TouchableOpacity>
+          </GlassCard>
         </View>
 
         {/* State suggestions dropdown */}
         {showSuggestions && stateSuggestions.length > 0 && (
-          <View style={styles.suggestionsBox}>
-            {stateSuggestions.map((state) => (
+          <GlassCard style={[styles.suggestionsBox, { backgroundColor: theme.colors.obsidian }]}>
+            {stateSuggestions.map((state, index) => (
               <TouchableOpacity
                 key={state}
-                style={styles.suggestionRow}
+                style={[
+                  styles.suggestionRow, 
+                  { borderBottomColor: theme.colors.borderSilver },
+                  index === stateSuggestions.length - 1 && { borderBottomWidth: 0 }
+                ]}
                 onPress={() => selectState(state)}
               >
-                <Ionicons name="location" size={16} color="#ff7a45" />
-                <Text style={styles.suggestionText}>{state}</Text>
-                <Ionicons name="chevron-forward" size={14} color="#444" />
+                <Ionicons name="location" size={16} color={theme.colors.goldMuted} />
+                <Text style={[theme.typography.body, { color: theme.colors.ivory, flex: 1, marginLeft: 10 }]}>{state}</Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </GlassCard>
         )}
 
-        {/* filter chips - only show when state is selected */}
+        {/* filter chips */}
         {selectedState && (
           <View style={styles.filterRow}>
-            {filters.map((f) => (
-              <TouchableOpacity
-                key={f}
-                style={[
-                  styles.filterChip,
-                  activeFilter === f && styles.filterChipActive,
-                ]}
-                onPress={() => setActiveFilter(f)}
-              >
-                <Text
+            {filters.map((f) => {
+              const isActive = activeFilter === f;
+              return (
+                <TouchableOpacity
+                  key={f}
                   style={[
-                    styles.filterText,
-                    activeFilter === f && styles.filterTextActive,
+                    styles.filterChip,
+                    { borderColor: theme.colors.goldMuted },
+                    isActive && { backgroundColor: theme.colors.gold }
                   ]}
+                  onPress={() => setActiveFilter(f)}
                 >
-                  {f}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text style={[theme.typography.label, { color: isActive ? theme.colors.obsidian : theme.colors.gold }]}>
+                    {f}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
       </View>
@@ -222,27 +233,24 @@ export default function ExploreScreen() {
         {selectedState ? (
           <>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>
+              <Text style={[theme.typography.headingS, { color: theme.colors.ivory }]}>
                 Top {places.length} in {selectedState}
               </Text>
-              <View style={styles.countBadge}>
-                <Text style={styles.countText}>{places.length} places</Text>
-              </View>
             </View>
 
             {places.length > 0 ? (
               <FlatList
                 data={places}
-                keyExtractor={(item) => item.id}
-                renderItem={renderPlace}
+                keyExtractor={(item) => item.name}
+                renderItem={({ item }) => <PlaceCard place={item} onPress={() => handlePlaceTap(item)} />}
                 contentContainerStyle={{ paddingBottom: 24 }}
                 showsVerticalScrollIndicator={false}
               />
             ) : (
               <View style={styles.emptyState}>
-                <Ionicons name="search" size={40} color="#2a3352" />
-                <Text style={styles.emptyTitle}>No {activeFilter} places</Text>
-                <Text style={styles.emptyDesc}>
+                <Ionicons name="compass-outline" size={60} color={theme.colors.parchment} />
+                <Text style={[theme.typography.headingM, { color: theme.colors.parchment, marginTop: 12 }]}>No {activeFilter} places</Text>
+                <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 4 }]}>
                   Try selecting "All" or a different category
                 </Text>
               </View>
@@ -250,33 +258,21 @@ export default function ExploreScreen() {
           </>
         ) : (
           <View style={styles.welcomeState}>
-            <View style={styles.welcomeIcon}>
-              <Ionicons name="earth" size={48} color="#ff7a45" />
+            <View style={[styles.welcomeIcon, { backgroundColor: theme.colors.midnight }]}>
+              <Ionicons name="earth" size={48} color={theme.colors.gold} />
             </View>
-            <Text style={styles.welcomeTitle}>Search any Indian State</Text>
-            <Text style={styles.welcomeDesc}>
-              Enter a state name above to discover the top 10 must-visit places with real locations you can view on the map.
+            <Text style={[theme.typography.headingM, { color: theme.colors.ivory, marginTop: 16 }]}>Explore Destinations</Text>
+            <Text style={[theme.typography.body, { color: theme.colors.parchment, textAlign: 'center', marginTop: 8, paddingHorizontal: 20 }]}>
+              Enter a state name above to discover top tourist spots, heritage sites, and hidden gems.
             </Text>
             <View style={styles.exampleRow}>
               {['Rajasthan', 'Kerala', 'Goa'].map(s => (
-                <TouchableOpacity
-                  key={s}
-                  style={styles.exampleChip}
-                  onPress={() => selectState(s)}
-                >
-                  <Text style={styles.exampleText}>{s}</Text>
-                </TouchableOpacity>
+                <PressableGoldButton key={s} label={s} variant="outline" onPress={() => selectState(s)} style={{ marginRight: 8, paddingVertical: 6, paddingHorizontal: 12 }} />
               ))}
             </View>
             <View style={styles.exampleRow}>
               {['Delhi', 'Ladakh', 'Tamil Nadu'].map(s => (
-                <TouchableOpacity
-                  key={s}
-                  style={styles.exampleChip}
-                  onPress={() => selectState(s)}
-                >
-                  <Text style={styles.exampleText}>{s}</Text>
-                </TouchableOpacity>
+                <PressableGoldButton key={s} label={s} variant="outline" onPress={() => selectState(s)} style={{ marginRight: 8, paddingVertical: 6, paddingHorizontal: 12 }} />
               ))}
             </View>
           </View>
@@ -287,126 +283,93 @@ export default function ExploreScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#050b18' },
-
+  container: { flex: 1 },
   headerArea: {
     paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: '#131b33',
+    paddingBottom: 20,
     zIndex: 10,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
-  title: { color: '#ffffff', fontSize: 24, fontWeight: '700' },
-  subtitle: { color: '#b0b4c3', fontSize: 13, marginTop: 4 },
-
+  searchBoxWrapper: {
+    marginTop: 20,
+  },
+  chatIconBtn: {
+    width: 38, height: 38,
+    borderRadius: 19,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)',
+    marginLeft: 12
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -4, right: -4,
+    backgroundColor: '#FF3B30',
+    minWidth: 18, height: 18, borderRadius: 9,
+    justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  unreadBadgeText: {
+    color: '#FFF', fontSize: 10, fontWeight: 'bold'
+  },
   searchBox: {
-    marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1f2740',
-    borderRadius: 18,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    borderRadius: 20,
   },
   searchInput: {
     flex: 1,
-    marginLeft: 8,
-    color: '#ffffff',
-    fontSize: 14,
+    marginLeft: 10,
+    paddingVertical: 4,
   },
-  goButton: {
-    backgroundColor: '#ff7a45',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginLeft: 8,
-  },
-  goText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
-
-  // Suggestions
   suggestionsBox: {
-    marginTop: 6,
-    backgroundColor: '#1a2038',
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#2b3350',
+    marginTop: 8,
+    borderRadius: 16,
+    padding: 8,
   },
   suggestionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
     paddingVertical: 12,
+    paddingHorizontal: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#1e2540',
-    gap: 10,
   },
-  suggestionText: { flex: 1, color: '#ddd', fontSize: 14 },
-
-  // Filters
   filterRow: {
     flexDirection: 'row',
-    marginTop: 12,
+    marginTop: 16,
     flexWrap: 'wrap',
+    gap: 8,
   },
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#2b3350',
-    marginRight: 8,
-    marginBottom: 6,
   },
-  filterChipActive: {
-    backgroundColor: '#ff7a45',
-    borderColor: '#ff7a45',
-  },
-  filterText: { color: '#d0d3e0', fontSize: 12 },
-  filterTextActive: { color: '#ffffff', fontWeight: '600' },
-
-  // List
-  listArea: { flex: 1, paddingHorizontal: 20, paddingTop: 12 },
+  listArea: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 16,
   },
-  sectionTitle: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  countBadge: {
-    backgroundColor: '#1f2740',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  countText: { color: '#ff7a45', fontSize: 11, fontWeight: '600' },
-
-  // Place card
   placeCard: {
-    backgroundColor: '#161b2b',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 12,
+    padding: 20,
+    marginBottom: 16,
   },
   badge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#ffe7d6',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  badgeText: { color: '#d45a1b', fontSize: 11, fontWeight: '600' },
-  placeName: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
-  placeCity: { color: '#b0b4c3', fontSize: 12, marginTop: 2 },
-  placeDesc: { color: '#8890a8', fontSize: 12, marginTop: 6, lineHeight: 18 },
+  badgeText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
   footerRow: {
-    marginTop: 12,
+    marginTop: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -414,31 +377,22 @@ const styles = StyleSheet.create({
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1a2038',
     borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    gap: 5,
+    paddingVertical: 6,
+    gap: 6,
   },
-  categoryText: { fontSize: 11, fontWeight: '600' },
+  categoryText: { fontSize: 12, fontWeight: '600' },
   viewMapBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
   },
-  viewMapText: { color: '#ff7a45', fontSize: 12, fontWeight: '600' },
-
-  // Empty state
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingBottom: 80,
+    marginTop: 60,
   },
-  emptyTitle: { color: '#3a4560', fontSize: 16, fontWeight: '600', marginTop: 12 },
-  emptyDesc: { color: '#2a3352', fontSize: 13, marginTop: 4 },
-
-  // Welcome state
   welcomeState: {
     flex: 1,
     justifyContent: 'center',
@@ -449,32 +403,12 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#ff7a4515',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  welcomeTitle: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
-  welcomeDesc: {
-    color: '#7a8099',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
-    paddingHorizontal: 30,
-    lineHeight: 20,
   },
   exampleRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 10,
+    marginTop: 16,
+    justifyContent: 'center',
   },
-  exampleChip: {
-    backgroundColor: '#1a2038',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: '#2b3350',
-  },
-  exampleText: { color: '#ff7a45', fontSize: 12, fontWeight: '600' },
 });

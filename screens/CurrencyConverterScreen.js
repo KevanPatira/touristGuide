@@ -10,6 +10,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../constants/ThemeContext';
+
+import GlassCard from '../components/ui/GlassCard';
+import StaggerRevealText from '../components/ui/StaggerRevealText';
+import FloatingParticles from '../components/ui/FloatingParticles';
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD'];
 
@@ -20,11 +25,12 @@ function CurrencyRow({
   isFrom,
   onSwap,
 }) {
+  const { theme } = useTheme();
   return (
-    <View style={styles.currencyRow}>
+    <GlassCard style={styles.currencyRowCard} glowOnPress={false}>
       <View style={styles.currencyInfo}>
-        <Text style={styles.currencyCode}>{currency}</Text>
-        <Text style={styles.currencyName}>
+        <Text style={[theme.typography.headingM, { color: theme.colors.ivory }]}>{currency}</Text>
+        <Text style={[theme.typography.caption, { color: theme.colors.parchment, flexWrap: 'wrap', marginTop: 2 }]}>
           {currency === 'USD' && 'US Dollar'}
           {currency === 'EUR' && 'Euro'}
           {currency === 'GBP' && 'British Pound'}
@@ -37,24 +43,26 @@ function CurrencyRow({
 
       <View style={styles.inputContainer}>
         <TextInput
-          style={[styles.amountInput, isFrom && styles.fromInput]}
+          style={[theme.typography.headingM, styles.amountInput, isFrom && styles.fromInput, { color: isFrom ? theme.colors.gold : theme.colors.ivory }]}
           value={amount}
           onChangeText={onAmountChange}
           placeholder="0"
-          placeholderTextColor="#666"
+          placeholderTextColor={theme.colors.borderSilver}
           keyboardType="numeric"
         />
         {isFrom && (
           <TouchableOpacity style={styles.swapButton} onPress={onSwap}>
-            <Ionicons name="swap-vertical" size={20} color="#ff7a45" />
+            <Ionicons name="swap-vertical" size={20} color={theme.colors.gold} />
           </TouchableOpacity>
         )}
       </View>
-    </View>
+    </GlassCard>
   );
 }
 
 export default function CurrencyConverterScreen() {
+  const { theme } = useTheme();
+
   const [fromCurrency, setFromCurrency] = useState('USD');
   const [toCurrency, setToCurrency] = useState('INR');
   const [fromAmount, setFromAmount] = useState('');
@@ -140,154 +148,135 @@ export default function CurrencyConverterScreen() {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: theme.colors.obsidian }]} showsVerticalScrollIndicator={false}>
+      <FloatingParticles count={6} />
+
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Currency Converter</Text>
-        <Text style={styles.subtitle}>Live rates from ECB</Text>
+      <View style={[styles.header, { backgroundColor: theme.colors.midnight }]}>
+        <StaggerRevealText text="Currency Converter" style={[theme.typography.displayS, { color: theme.colors.gold }]} />
+        <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 4 }]}>Live rates from ECB</Text>
       </View>
 
-      {/* Loading/Error */}
-      {loadingRates && (
-        <View style={styles.banner}>
-          <ActivityIndicator color="#ff7a45" />
-          <Text style={styles.bannerText}>Loading rates...</Text>
-        </View>
-      )}
-      
-      {error && !loadingRates && (
-        <TouchableOpacity 
-          style={[styles.banner, styles.errorBanner]}
-          onPress={() => fetchRates(base)}
-        >
-          <Ionicons name="alert-circle-outline" size={20} color="#ff4444" />
-          <Text style={[styles.bannerText, { color: '#ff4444' }]}>
-            {error} • Tap to retry
-          </Text>
-        </TouchableOpacity>
-      )}
+      <View style={styles.content}>
+        {/* Loading/Error */}
+        {loadingRates && (
+          <GlassCard style={styles.banner} glowOnPress={false}>
+            <ActivityIndicator color={theme.colors.gold} />
+            <Text style={[theme.typography.body, { color: theme.colors.ivory, marginLeft: 8 }]}>Loading rates...</Text>
+          </GlassCard>
+        )}
+        
+        {error && !loadingRates && (
+          <TouchableOpacity onPress={() => fetchRates(base)}>
+            <GlassCard style={[styles.banner, { borderColor: theme.colors.crimson }]} glowOnPress={false}>
+              <Ionicons name="alert-circle-outline" size={20} color={theme.colors.crimson} />
+              <Text style={[theme.typography.body, { color: theme.colors.crimson, marginLeft: 8 }]}>
+                {error} • Tap to retry
+              </Text>
+            </GlassCard>
+          </TouchableOpacity>
+        )}
 
-      {/* Currency inputs */}
-      <CurrencyRow
-        currency={fromCurrency}
-        amount={fromAmount}
-        onAmountChange={setFromAmount}
-        isFrom={true}
-        onSwap={handleSwap}
-      />
+        {/* Currency inputs */}
+        <CurrencyRow
+          currency={fromCurrency}
+          amount={fromAmount}
+          onAmountChange={setFromAmount}
+          isFrom={true}
+          onSwap={handleSwap}
+        />
 
-      <CurrencyRow
-        currency={toCurrency}
-        amount={toAmount}
-        onAmountChange={setToAmount}
-        isFrom={false}
-      />
+        <CurrencyRow
+          currency={toCurrency}
+          amount={toAmount}
+          onAmountChange={setToAmount}
+          isFrom={false}
+        />
 
-      {/* Rate display */}
-      {rates[toCurrency] && (
-        <View style={styles.rateCard}>
-          <Text style={styles.rateText}>
-            1 {fromCurrency} = {rates[toCurrency].toFixed(4)} {toCurrency}
-          </Text>
-          <Text style={styles.rateSource}>European Central Bank</Text>
-        </View>
-      )}
-
-      {/* Quick select */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Select base currency</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.currencyRow}>
-            {CURRENCIES.map((currency) => (
-              <TouchableOpacity
-                key={currency}
-                style={[
-                  styles.currencyChip,
-                  fromCurrency === currency && styles.currencyChipActive
-                ]}
-                onPress={() => handleQuickSelect(currency)}
-              >
-                <Text style={[
-                  styles.currencyChipText,
-                  fromCurrency === currency && styles.currencyChipTextActive
-                ]}>
-                  {currency}
-                </Text>
-              </TouchableOpacity>
-            ))}
+        {/* Rate display */}
+        {rates[toCurrency] && (
+          <View style={styles.rateCard}>
+            <Text style={[theme.typography.body, { color: theme.colors.gold, fontWeight: '700' }]}>
+              1 {fromCurrency} = {rates[toCurrency].toFixed(4)} {toCurrency}
+            </Text>
+            <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 4 }]}>European Central Bank</Text>
           </View>
-        </ScrollView>
-      </View>
+        )}
 
-      {/* Result */}
-      {toAmount && !loadingRates && (
-        <View style={styles.resultCard}>
-          <Text style={styles.resultTitle}>{fromAmount} {fromCurrency}</Text>
-          <Text style={styles.resultAmount}>
-            {formatCurrency(parseFloat(toAmount), toCurrency)}
-          </Text>
+        {/* Quick select */}
+        <View style={styles.section}>
+          <Text style={[theme.typography.body, { color: theme.colors.ivory, marginBottom: 12 }]}>Select base currency</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.currencyChipsRow}>
+              {CURRENCIES.map((currency) => {
+                const isActive = fromCurrency === currency;
+                return (
+                  <TouchableOpacity
+                    key={currency}
+                    style={[
+                      styles.currencyChip,
+                      { borderColor: isActive ? theme.colors.gold : theme.colors.borderSilver },
+                      isActive && { backgroundColor: theme.colors.gold }
+                    ]}
+                    onPress={() => handleQuickSelect(currency)}
+                  >
+                    <Text style={[
+                      theme.typography.label,
+                      { color: isActive ? theme.colors.obsidian : theme.colors.parchment }
+                    ]}>
+                      {currency}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
         </View>
-      )}
+
+        {/* Result */}
+        {toAmount && !loadingRates && (
+          <GlassCard style={[styles.resultCard, { backgroundColor: theme.colors.gold + '22', borderColor: theme.colors.gold }]} glowOnPress={false}>
+            <Text style={[theme.typography.body, { color: theme.colors.ivory }]}>{fromAmount} {fromCurrency} equals</Text>
+            <Text style={[theme.typography.displayL, { color: theme.colors.gold, marginTop: 8 }]} numberOfLines={1} adjustsFontSizeToFit>
+              {formatCurrency(parseFloat(toAmount), toCurrency)}
+            </Text>
+          </GlassCard>
+        )}
+      </View>
+      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#050b18' },
+  container: { flex: 1 },
   header: { 
     padding: 20, 
-    paddingTop: 60 
+    paddingTop: 60,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    zIndex: 10,
   },
-  title: { 
-    color: '#ffffff', 
-    fontSize: 28, 
-    fontWeight: '800' 
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
-  subtitle: { 
-    color: '#b0b4c3', 
-    fontSize: 14, 
-    marginTop: 4 
-  },
-
   banner: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    backgroundColor: '#161b2b', 
-    margin: 20, 
     padding: 12, 
-    borderRadius: 12 
+    borderRadius: 12,
+    marginBottom: 16,
   },
-  errorBanner: { 
-    backgroundColor: '#2a0f0f' 
-  },
-  bannerText: { 
-    color: '#ffffff', 
-    fontSize: 14, 
-    marginLeft: 8 
-  },
-
-  currencyRow: { 
+  currencyRowCard: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    backgroundColor: '#161b2b', 
-    marginHorizontal: 20, 
-    marginTop: 16, 
+    marginBottom: 16, 
     padding: 20, 
-    borderRadius: 20 
   },
   currencyInfo: { flex: 1, marginRight: 10 },
-  currencyCode: { 
-    color: '#ffffff', 
-    fontSize: 20, 
-    fontWeight: '800' 
-  },
-  currencyName: { 
-    color: '#b0b4c3', 
-    fontSize: 12, 
-    marginTop: 2,
-    flexWrap: 'wrap'
-  },
   inputContainer: { 
     flexDirection: 'row', 
     alignItems: 'center',
@@ -295,90 +284,40 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   amountInput: { 
-    color: '#ffffff', 
-    fontSize: 24, 
-    fontWeight: '800', 
     textAlign: 'right', 
     minWidth: 100,
     flex: 1,
+    paddingVertical: 0,
   },
   fromInput: { 
     fontSize: 28, 
-    color: '#ff7a45' 
   },
   swapButton: { 
     marginLeft: 12, 
     padding: 10 
   },
-
   rateCard: { 
-    backgroundColor: '#1a2332', 
-    marginHorizontal: 20, 
-    marginTop: 12, 
-    padding: 16, 
-    borderRadius: 16, 
-    alignItems: 'center' 
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 24,
   },
-  rateText: { 
-    color: '#ff7a45', 
-    fontSize: 16, 
-    fontWeight: '700' 
-  },
-  rateSource: { 
-    color: '#b0b4c3', 
-    fontSize: 12, 
-    marginTop: 4 
-  },
-
   section: { 
-    marginHorizontal: 20, 
-    marginTop: 24 
+    marginTop: 8,
   },
-  sectionTitle: { 
-    color: '#ffffff', 
-    fontSize: 16, 
-    fontWeight: '700', 
-    marginBottom: 16 
-  },
-  currencyRow: { 
-    flexDirection: 'row' 
+  currencyChipsRow: { 
+    flexDirection: 'row',
+    paddingBottom: 8,
   },
   currencyChip: { 
-    backgroundColor: '#1f2740', 
-    paddingHorizontal: 20, 
-    paddingVertical: 12, 
-    borderRadius: 25, 
-    marginRight: 12 
-  },
-  currencyChipActive: { 
-    backgroundColor: '#ff7a45' 
-  },
-  currencyChipText: { 
-    color: '#d0d3e0', 
-    fontSize: 16, 
-    fontWeight: '700' 
-  },
-  currencyChipTextActive: { 
-    color: '#ffffff' 
-  },
-
-  resultCard: { 
-    backgroundColor: '#ff7a45', 
-    margin: 20, 
-    padding: 24, 
+    paddingHorizontal: 16, 
+    paddingVertical: 10, 
     borderRadius: 20, 
+    marginRight: 12,
+    borderWidth: 1,
+  },
+  resultCard: { 
+    padding: 24, 
     alignItems: 'center',
     marginTop: 24 
-  },
-  resultTitle: { 
-    color: '#ffffff', 
-    fontSize: 16, 
-    opacity: 0.9 
-  },
-  resultAmount: { 
-    color: '#ffffff', 
-    fontSize: 36, 
-    fontWeight: '900', 
-    marginTop: 8 
   },
 });

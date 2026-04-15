@@ -1,173 +1,92 @@
-// screens/CommunityScreen.js
-import React, { useState, useEffect } from 'react';
+// screens/CommunityScreen.js — Global real-time social feed
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  Image,
-  Share,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  ActivityIndicator
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  FlatList, Image, Share, KeyboardAvoidingView, Platform,
+  Alert, ActivityIndicator, RefreshControl, Modal, Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  collection, query, orderBy, limit, onSnapshot,
+  addDoc, doc, updateDoc, arrayUnion, arrayRemove,
+  serverTimestamp, startAfter, getDocs, deleteDoc, setDoc,
+  increment as firestoreIncrement,
+} from 'firebase/firestore';
+import { db } from '../constants/firebaseConfig';
+import { useAuth } from '../constants/AuthContext';
+import { useTheme } from '../constants/ThemeContext';
+import useNotifications from '../hooks/useNotifications';
 
-const tabs = ['Popular', 'Recent', 'Nearby'];
-const STORAGE_KEY = '@community_posts';
+import GlassCard from '../components/ui/GlassCard';
+import PressableGoldButton from '../components/ui/PressableGoldButton';
+import StaggerRevealText from '../components/ui/StaggerRevealText';
+import FloatingParticles from '../components/ui/FloatingParticles';
 
-const initialPosts = [
-  {
-    id: '1',
-    name: 'Amara K.',
-    time: '2h ago',
-    location: 'Santorini, Greece',
-    text: 'The sunset views from Oia are absolutely breathtaking! Arrive 2 hours early to grab a good spot.',
-    imageUri: null,
-    likes: 142,
-    comments: 28,
-  },
-  {
-    id: '2',
-    name: 'Lucas M.',
-    time: '5h ago',
-    location: 'Kyoto, Japan',
-    text: 'Visit Fushimi Inari early morning to avoid the crowd. Try the street food near the entrance.',
-    imageUri: null,
-    likes: 96,
-    comments: 19,
-  },
-];
+const POSTS_PER_PAGE = 15;
 
-function PostCard({ post }) {
-  const [liked, setLiked] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [likesCount, setLikesCount] = useState(post.likes);
+import PostCard from '../components/ui/PostCard';
 
-  const toggleLike = () => {
-    if (liked) {
-      setLikesCount(prev => prev - 1);
-    } else {
-      setLikesCount(prev => prev + 1);
-    }
-    setLiked(!liked);
-  };
+// ═══════════════════════════════════════
+// Main Community Screen
+// ═══════════════════════════════════════
+const tabs = ['Recent', 'Popular', 'Following'];
 
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        message: `Check out this travel tip from ${post.name}: "${post.text}" - via TouristGuide App`,
-      });
-    } catch (error) {
-      console.log('Error sharing:', error);
-    }
-  };
+export default function CommunityScreen({ navigation }) {
+  const { theme } = useTheme();
+  const { user, userProfile } = useAuth();
 
-  return (
-    <View style={styles.postCard}>
-      {/* header */}
-      <View style={styles.postHeader}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarInitials}>{post.name[0]}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.postName}>{post.name}</Text>
-          <Text style={styles.postMeta}>
-            {post.time} • {post.location}
-          </Text>
-        </View>
-        <TouchableOpacity>
-          <Ionicons name="ellipsis-horizontal" size={20} color="#888" />
-        </TouchableOpacity>
-      </View>
-
-      {/* body */}
-      <View style={styles.postBody}>
-        {post.text ? <Text style={styles.postText}>{post.text}</Text> : null}
-        
-        {/* Render Image if exists */}
-        {post.imageUri && (
-          <Image 
-            source={{ uri: post.imageUri }} 
-            style={styles.postImage} 
-            resizeMode="cover"
-          />
-        )}
-      </View>
-
-      {/* actions */}
-      <View style={styles.postActions}>
-        <View style={{ flexDirection: 'row', gap: 16 }}>
-          <TouchableOpacity style={styles.statChip} onPress={toggleLike}>
-            <Ionicons name={liked ? "heart" : "heart-outline"} size={20} color={liked ? "#e91e63" : "#888"} />
-            <Text style={[styles.statText, liked && { color: "#e91e63" }]}>{likesCount}</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.statChip}>
-            <Ionicons name="chatbubble-ellipses-outline" size={20} color="#888" />
-            <Text style={styles.statText}>{post.comments}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 16 }}>
-          <TouchableOpacity onPress={handleShare}>
-            <Ionicons name="share-outline" size={20} color="#888" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setSaved(!saved)}>
-            <Ionicons name={saved ? "bookmark" : "bookmark-outline"} size={20} color={saved ? "#ff7a45" : "#888"} />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-export default function CommunityScreen() {
-  const [activeTab, setActiveTab] = useState('Popular');
+  const [activeTab, setActiveTab] = useState('Recent');
   const [text, setText] = useState('');
   const [imageUri, setImageUri] = useState(null);
-  const [posts, setPosts] = useState(initialPosts);
+  const [posts, setPosts] = useState([]);
   const [postLocation, setPostLocation] = useState('My Location');
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
+  const [isPosting, setIsPosting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
-  // Load from local storage to simulate backend persistence
+  const { unreadCount } = useNotifications(user?.uid);
+
+  // ═══ Real-time feed subscription ═══
   useEffect(() => {
-    loadPosts();
-  }, []);
+    let q;
+    const postsRef = collection(db, 'posts');
 
-  const loadPosts = async () => {
-    try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setPosts(JSON.parse(stored));
-      }
-    } catch(e) {}
-  };
+    if (activeTab === 'Popular') {
+      q = query(postsRef, orderBy('likes', 'desc'), limit(POSTS_PER_PAGE));
+    } else {
+      q = query(postsRef, orderBy('createdAt', 'desc'), limit(POSTS_PER_PAGE));
+    }
 
-  const savePosts = async (newPosts) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newPosts));
-    } catch(e) {}
-  };
-
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      allowsEditing: true,
-      quality: 0.8,
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPosts(data);
+      setInitialLoading(false);
+      setRefreshing(false);
+    }, (error) => {
+      console.log('Feed error:', error);
+      setInitialLoading(false);
+      setRefreshing(false);
     });
 
+    return unsubscribe;
+  }, [activeTab]);
+
+  // ═══ Image Picker ═══
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.7,
+    });
     if (!result.canceled) {
       setImageUri(result.assets[0].uri);
     }
   };
 
+  // ═══ Location ═══
   const handleGetLocation = async () => {
     setIsFetchingLocation(true);
     try {
@@ -191,137 +110,301 @@ export default function CommunityScreen() {
     setIsFetchingLocation(false);
   };
 
-  const handlePost = () => {
-    if (!text.trim() && !imageUri) return;
-    
-    const newPost = {
-      id: Date.now().toString(),
-      name: 'You',
-      time: 'Just now',
-      location: postLocation,
-      text: text,
-      imageUri: imageUri,
-      likes: 0,
-      comments: 0,
-    };
-    
-    const updated = [newPost, ...posts];
-    setPosts(updated);
-    savePosts(updated);
-    
-    // Reset inputs
-    setText('');
-    setImageUri(null);
-    setPostLocation('My Location');
+  // ═══ Image upload disabled (Storage requires Blaze plan) ═══
+  const uploadImage = async (uri) => {
+    // Return the local URI as-is since Firebase Storage is not available
+    return uri;
   };
 
-  const renderPost = ({ item }) => <PostCard post={item} />;
+  // ═══ Create Post ═══
+  const handlePost = async () => {
+    if (!text.trim() && !imageUri) return;
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to post.');
+      return;
+    }
+
+    setIsPosting(true);
+    try {
+      let imageUrl = null;
+      if (imageUri) {
+        imageUrl = await uploadImage(imageUri);
+      }
+
+      const postDocRef = await addDoc(collection(db, 'posts'), {
+        authorId: user.uid,
+        authorName: userProfile?.displayName || user.displayName || 'Traveler',
+        authorAvatar: userProfile?.avatarUrl || '',
+        text: text.trim(),
+        imageUrl,
+        location: postLocation,
+        likes: 0,
+        likesBy: [],
+        commentsCount: 0,
+        createdAt: serverTimestamp(),
+      });
+
+      // Increment user's post count
+      await updateDoc(doc(db, 'users', user.uid), {
+        postCount: firestoreIncrement(1),
+      });
+
+      // Notify all followers about new post
+      try {
+        const followersQuery = query(collection(db, 'follows'), where('followingId', '==', user.uid), where('status', '==', 'accepted'));
+        const followersSnap = await getDocs(followersQuery);
+        followersSnap.forEach(async (docSnap) => {
+          const followerId = docSnap.data().followerId;
+          await setDoc(doc(db, 'notifications', `post_${postDocRef.id}_${followerId}`), {
+            recipientId: followerId,
+            type: 'new_post',
+            fromUserId: user.uid,
+            postId: postDocRef.id,
+            read: false,
+            createdAt: serverTimestamp(),
+          });
+        });
+      } catch (e) {
+        console.log('Follower notification error:', e);
+      }
+
+      // Reset
+      setText('');
+      setImageUri(null);
+      setPostLocation('My Location');
+    } catch (e) {
+      Alert.alert('Error', 'Could not create post. Please try again.');
+      console.log('Post error:', e);
+    }
+    setIsPosting(false);
+  };
+
+  // ═══ Navigate to user profile ═══
+  const handleAuthorPress = (authorId) => {
+    if (authorId === user?.uid) return; // Don't navigate to own profile
+    navigation.navigate('UserProfile', { userId: authorId });
+  };
+
+  // ═══ Refresh ═══
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    // The onSnapshot will handle the refresh
+  }, []);
+
+  const displayName = userProfile?.displayName || user?.displayName || 'You';
+  const initials = displayName[0]?.toUpperCase() || '?';
+
+  const renderPost = ({ item }) => (
+    <PostCard post={item} onAuthorPress={handleAuthorPress} />
+  );
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: theme.colors.obsidian }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* header */}
-      <View style={styles.headerArea}>
-        <Text style={styles.title}>Community</Text>
-        <Text style={styles.subtitle}>Share tips with fellow travelers</Text>
+      <FloatingParticles count={10} />
+
+      {/* Header */}
+      <View style={[styles.headerArea, { backgroundColor: theme.colors.midnight }]}>
+        <View style={styles.headerRow}>
+          <View>
+            <StaggerRevealText text="Community" style={[theme.typography.displayS, { color: theme.colors.gold }]} />
+            <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 4 }]}>
+              Share tips with travelers worldwide
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={[styles.chatIconBtn, { backgroundColor: theme.colors.obsidian }]}
+              onPress={() => navigation.navigate('Discover')}
+            >
+              <Ionicons name="search" size={20} color={theme.colors.gold} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.chatIconBtn, { backgroundColor: theme.colors.obsidian }]}
+              onPress={() => navigation.navigate('Notifications')}
+            >
+              <Ionicons name="notifications-outline" size={22} color={theme.colors.gold} />
+              {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.chatIconBtn, { backgroundColor: theme.colors.obsidian }]}
+              onPress={() => navigation.navigate('ChatList')}
+            >
+              <Ionicons name="chatbubbles-outline" size={22} color={theme.colors.gold} />
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* Input box */}
-        <View style={styles.inputContainer}>
+        <GlassCard style={styles.inputContainer} glowOnPress={false}>
           <View style={styles.inputRow}>
-            <View style={styles.smallAvatar}><Text style={{color: '#fff', fontSize: 12}}>Y</Text></View>
+            <View style={[styles.smallAvatar, { backgroundColor: theme.colors.copper + '44' }]}>
+              {userProfile?.avatarUrl ? (
+                <Image source={{ uri: userProfile.avatarUrl }} style={styles.smallAvatarImg} />
+              ) : (
+                <Text style={{ color: theme.colors.copper, fontSize: 14, fontWeight: 'bold' }}>
+                  {initials}
+                </Text>
+              )}
+            </View>
             <TextInput
               placeholder="Share a travel tip or photo..."
-              placeholderTextColor="#777"
-              style={styles.input}
+              placeholderTextColor={theme.colors.parchment}
+              style={[theme.typography.body, styles.input, { color: theme.colors.ivory }]}
               value={text}
               onChangeText={setText}
               multiline
             />
           </View>
-          
+
           {imageUri && (
             <View style={styles.imagePreviewContainer}>
               <Image source={{ uri: imageUri }} style={styles.imagePreview} />
               <TouchableOpacity style={styles.removeImageBtn} onPress={() => setImageUri(null)}>
-                <Ionicons name="close-circle" size={24} color="#ff4444" />
+                <Ionicons name="close-circle" size={24} color={theme.colors.crimson} />
               </TouchableOpacity>
             </View>
           )}
 
-          <View style={styles.inputToolbar}>
+          <View style={[styles.inputToolbar, { borderTopColor: theme.colors.borderSilver }]}>
             <TouchableOpacity style={styles.iconButton} onPress={pickImage}>
-              <Ionicons name="image-outline" size={22} color="#ff7a45" />
+              <Ionicons name="image-outline" size={22} color={theme.colors.gold} />
             </TouchableOpacity>
-            
+
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <TouchableOpacity style={styles.iconButton} onPress={handleGetLocation}>
-                <Ionicons name="location-outline" size={22} color={postLocation !== 'My Location' ? "#4CAF50" : "#ff7a45"} />
+                <Ionicons
+                  name="location-outline"
+                  size={22}
+                  color={postLocation !== 'My Location' ? theme.colors.emerald : theme.colors.gold}
+                />
               </TouchableOpacity>
               {isFetchingLocation ? (
-                <ActivityIndicator size="small" color="#ff7a45" />
+                <ActivityIndicator size="small" color={theme.colors.gold} />
               ) : postLocation !== 'My Location' ? (
-                <Text style={{ color: '#4CAF50', fontSize: 11, marginRight: 8, maxWidth: 100 }} numberOfLines={1}>
+                <Text
+                  style={[theme.typography.caption, { color: theme.colors.emerald, marginRight: 8, maxWidth: 100 }]}
+                  numberOfLines={1}
+                >
                   {postLocation}
                 </Text>
               ) : null}
             </View>
-            <TouchableOpacity 
-              style={[styles.postButton, (!text.trim() && !imageUri) && { opacity: 0.5 }]} 
-              onPress={handlePost}
-              disabled={!text.trim() && !imageUri}
-            >
-              <Text style={styles.postButtonText}>Post</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
 
-        {/* tabs */}
+            <PressableGoldButton
+              label={isPosting ? '...' : 'Post'}
+              onPress={handlePost}
+              disabled={(!text.trim() && !imageUri) || isPosting}
+              loading={isPosting}
+              style={{ marginLeft: 'auto', paddingVertical: 8, paddingHorizontal: 16, minHeight: 0 }}
+            />
+          </View>
+        </GlassCard>
+
+        {/* Tabs */}
         <View style={styles.tabRow}>
-          {tabs.map((t) => (
-            <TouchableOpacity
-              key={t}
-              style={[styles.tabChip, activeTab === t && styles.tabChipActive]}
-              onPress={() => setActiveTab(t)}
-            >
-              <Text style={[styles.tabText, activeTab === t && styles.tabTextActive]}>
-                {t}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {tabs.map((t) => {
+            const isActive = activeTab === t;
+            return (
+              <TouchableOpacity
+                key={t}
+                style={[
+                  styles.tabChip,
+                  { borderColor: theme.colors.goldMuted },
+                  isActive && { backgroundColor: theme.colors.gold }
+                ]}
+                onPress={() => setActiveTab(t)}
+              >
+                <Text style={[theme.typography.label, { color: isActive ? theme.colors.obsidian : theme.colors.gold }]}>
+                  {t}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
-      {/* feed */}
-      <FlatList
-        data={posts}
-        keyExtractor={(item) => item.id}
-        renderItem={renderPost}
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-        showsVerticalScrollIndicator={false}
-      />
+      {/* Feed */}
+      {initialLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.gold} />
+          <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 12 }]}>
+            Loading feed...
+          </Text>
+        </View>
+      ) : posts.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="globe-outline" size={64} color={theme.colors.ash} />
+          <Text style={[theme.typography.headingS, { color: theme.colors.parchment, marginTop: 16 }]}>
+            No posts yet
+          </Text>
+          <Text style={[theme.typography.body, { color: theme.colors.ash, textAlign: 'center', marginTop: 6 }]}>
+            Be the first to share a travel experience!
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={posts}
+          keyExtractor={(item) => item.id}
+          renderItem={renderPost}
+          contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.colors.gold}
+              colors={[theme.colors.gold]}
+            />
+          }
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#050b18' },
-
+  container: { flex: 1 },
   headerArea: {
     paddingTop: 60,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    backgroundColor: '#131b33',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    zIndex: 10,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
-  title: { color: '#ffffff', fontSize: 24, fontWeight: '700' },
-  subtitle: { color: '#b0b4c3', fontSize: 13, marginTop: 4 },
-
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  chatIconBtn: {
+    width: 38, height: 38,
+    borderRadius: 19,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)'
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -4, right: -4,
+    backgroundColor: '#FF3B30',
+    minWidth: 18, height: 18, borderRadius: 9,
+    justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  unreadBadgeText: {
+    color: '#FFF', fontSize: 10, fontWeight: 'bold'
+  },
   inputContainer: {
-    backgroundColor: '#1f2740',
-    borderRadius: 18,
-    marginTop: 16,
-    padding: 12,
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 20,
   },
   inputRow: {
     flexDirection: 'row',
@@ -329,129 +412,127 @@ const styles = StyleSheet.create({
     minHeight: 40,
   },
   smallAvatar: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: '#ffb38a',
+    width: 32, height: 32, borderRadius: 16,
     justifyContent: 'center', alignItems: 'center',
-    marginRight: 10,
+    marginRight: 12, overflow: 'hidden',
   },
-  input: { 
-    flex: 1, color: '#ffffff', fontSize: 14,
-    maxHeight: 100, alignSelf: 'flex-start'
-  },
+  smallAvatarImg: { width: 32, height: 32, borderRadius: 16 },
+  input: { flex: 1, maxHeight: 100, alignSelf: 'flex-start' },
   inputToolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#2b3350',
-    paddingTop: 12,
+    paddingTop: 16,
   },
-  iconButton: {
-    marginRight: 16,
-  },
-  postButton: {
-    backgroundColor: '#ff7a45',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginLeft: 'auto',
-  },
-  postButtonText: { color: '#ffffff', fontWeight: '600', fontSize: 13 },
-  
+  iconButton: { marginRight: 16 },
   imagePreviewContainer: {
-    marginTop: 10,
+    marginTop: 12,
     position: 'relative',
     alignSelf: 'flex-start',
   },
-  imagePreview: {
-    width: 200,
-    height: 150,
-    borderRadius: 12,
-  },
+  imagePreview: { width: 200, height: 150, borderRadius: 12 },
   removeImageBtn: {
     position: 'absolute',
-    top: -8,
-    right: -8,
+    top: -8, right: -8,
     backgroundColor: '#fff',
     borderRadius: 12,
   },
-
-  tabRow: {
-    flexDirection: 'row',
-    marginTop: 16,
-  },
+  tabRow: { flexDirection: 'row', marginTop: 20 },
   tabChip: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 999,
-    marginRight: 8,
-    backgroundColor: '#1a2038',
-    borderWidth: 1,
-    borderColor: '#2b3350',
-  },
-  tabChipActive: {
-    backgroundColor: '#ff7a4522',
-    borderColor: '#ff7a45',
-  },
-  tabText: { color: '#888', fontSize: 13 },
-  tabTextActive: { color: '#ff7a45', fontWeight: '600' },
-
-  postCard: {
-    backgroundColor: '#161b2b',
     borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
+    marginRight: 8,
     borderWidth: 1,
-    borderColor: '#1e2540',
   },
+  postCard: { padding: 16, marginBottom: 16 },
   postHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 12,
+  },
+  postHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#ffb38a',
+    width: 40, height: 40, borderRadius: 20,
     marginRight: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center', alignItems: 'center',
+    overflow: 'hidden',
   },
-  avatarInitials: {
-    color: '#d45a1b',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  postName: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
-  postMeta: { color: '#b0b4c3', fontSize: 12, marginTop: 2 },
-
-  postBody: { marginTop: 14 },
-  postText: { color: '#e1e3f0', fontSize: 14, lineHeight: 20 },
+  avatarImg: { width: 40, height: 40, borderRadius: 20 },
+  postBody: { marginBottom: 16 },
   postImage: {
     width: '100%',
     height: 200,
     borderRadius: 12,
     marginTop: 12,
-    backgroundColor: '#111728',
   },
-
   postActions: {
     flexDirection: 'row',
-    marginTop: 16,
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#252a3f',
     paddingTop: 12,
   },
-  statChip: {
-    flexDirection: 'row',
+  statChip: { flexDirection: 'row', alignItems: 'center' },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  statText: {
-    color: '#888',
-    fontSize: 13,
-    marginLeft: 6,
-    fontWeight: '500',
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
   },
+  // Comment Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    height: '65%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  emptyComments: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  commentAvatar: {
+    width: 30, height: 30, borderRadius: 15,
+    justifyContent: 'center', alignItems: 'center',
+    overflow: 'hidden',
+  },
+  commentAvatarImg: { width: 30, height: 30, borderRadius: 15 },
+  commentInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+  },
+  commentInput: { flex: 1, marginRight: 10 },
 });

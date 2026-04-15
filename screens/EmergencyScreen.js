@@ -9,6 +9,11 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../constants/ThemeContext';
+
+import GlassCard from '../components/ui/GlassCard';
+import StaggerRevealText from '../components/ui/StaggerRevealText';
+import FloatingParticles from '../components/ui/FloatingParticles';
 
 const EMERGENCY_NUMBERS = {
   India: {
@@ -31,6 +36,16 @@ const EMERGENCY_NUMBERS = {
     fire: '911',
     emergency: '911',
   },
+  Japan: {
+    police: '110',
+    ambulance: '119',
+    fire: '119',
+  },
+  UAE: {
+    police: '999',
+    ambulance: '998',
+    fire: '997',
+  }
 };
 
 const LOCAL_SERVICES = {
@@ -47,35 +62,38 @@ const LOCAL_SERVICES = {
 };
 
 function EmergencyButton({ onPress, isActive }) {
+  const { theme } = useTheme();
   return (
     <TouchableOpacity
-      style={[styles.sosButton, isActive && styles.sosButtonActive]}
+      style={[styles.sosButton, { backgroundColor: theme.colors.crimson, shadowColor: theme.colors.crimson }, isActive && { transform: [{ scale: 1.05 }], backgroundColor: '#CC0000' }]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <Ionicons name="ios-warning" size={48} color="#ffffff" />
-      <Text style={styles.sosText}>SOS</Text>
-      <Text style={styles.sosSubtext}>HOLD 3 SECONDS</Text>
+      <Ionicons name="ios-warning" size={48} color={theme.colors.ivory} />
+      <Text style={[theme.typography.headingM, styles.sosText, { color: theme.colors.ivory }]}>SOS</Text>
+      <Text style={[theme.typography.caption, styles.sosSubtext, { color: theme.colors.ivory, opacity: 0.8 }]}>HOLD 3 SECONDS</Text>
     </TouchableOpacity>
   );
 }
 
-function ContactRow({ icon, title, number, onPress }) {
+function ContactRow({ icon, title, number, onPress, iconColor }) {
+  const { theme } = useTheme();
   return (
-    <TouchableOpacity style={styles.contactRow} onPress={onPress}>
-      <View style={[styles.contactIcon, { backgroundColor: icon === 'medical' ? '#4CAF50' : '#FF4444' }]}>
-        <Ionicons name={icon} size={20} color="#ffffff" />
+    <GlassCard style={styles.contactRow} onPress={onPress} glowOnPress={false}>
+      <View style={[styles.contactIcon, { backgroundColor: iconColor + '22' }]}>
+        <Ionicons name={icon} size={20} color={iconColor} />
       </View>
       <View style={styles.contactInfo}>
-        <Text style={styles.contactTitle}>{title}</Text>
-        <Text style={styles.contactNumber}>{number}</Text>
+        <Text style={[theme.typography.body, { color: theme.colors.ivory }]}>{title}</Text>
+        <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 2 }]}>{number}</Text>
       </View>
-      <Ionicons name="call-outline" size={24} color="#4CAF50" />
-    </TouchableOpacity>
+      <Ionicons name="call" size={24} color={iconColor} style={styles.callIcon} />
+    </GlassCard>
   );
 }
 
 export default function EmergencyScreen() {
+  const { theme } = useTheme();
   const [currentCountry, setCurrentCountry] = useState('India');
   const [sosHoldTime, setSosHoldTime] = useState(0);
   const [sosActive, setSosActive] = useState(false);
@@ -118,11 +136,13 @@ export default function EmergencyScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView style={[styles.container, { backgroundColor: theme.colors.obsidian }]} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <FloatingParticles count={10} />
+      
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Emergency SOS</Text>
-        <Text style={styles.subtitle}>
+      <View style={[styles.header, { backgroundColor: theme.colors.midnight }]}>
+        <StaggerRevealText text="Emergency SOS" style={[theme.typography.displayS, { color: theme.colors.crimson }]} />
+        <Text style={[theme.typography.caption, styles.subtitle, { color: theme.colors.parchment }]}>
           Hold SOS button for immediate help
         </Text>
       </View>
@@ -134,7 +154,7 @@ export default function EmergencyScreen() {
           isActive={sosHoldTime > 0}
         />
         {sosHoldTime > 0 && (
-          <Text style={styles.holdCounter}>
+          <Text style={[styles.holdCounter, { color: theme.colors.crimson }]}>
             Hold: {Math.round(sosHoldTime * 10) / 10}s
           </Text>
         )}
@@ -142,88 +162,95 @@ export default function EmergencyScreen() {
 
       {/* Quick country selector */}
       <View style={styles.countrySelector}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {['India', 'France', 'USA', 'Japan', 'UAE'].map((country) => (
-            <TouchableOpacity
-              key={country}
-              style={[
-                styles.countryChip,
-                currentCountry === country && styles.countryChipActive,
-              ]}
-              onPress={() => setCurrentCountry(country)}
-            >
-              <Text
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20 }}>
+          {['India', 'France', 'USA', 'Japan', 'UAE'].map((country) => {
+            const isActive = currentCountry === country;
+            return (
+              <TouchableOpacity
+                key={country}
                 style={[
-                  styles.countryText,
-                  currentCountry === country && styles.countryTextActive,
+                  styles.countryChip,
+                  { borderColor: isActive ? theme.colors.crimson : theme.colors.borderSilver },
+                  isActive && { backgroundColor: theme.colors.crimson }
                 ]}
+                onPress={() => setCurrentCountry(country)}
               >
-                {country}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  style={[
+                    theme.typography.label,
+                    { color: isActive ? theme.colors.ivory : theme.colors.parchment }
+                  ]}
+                >
+                  {country}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
       {/* Emergency Numbers */}
-      <View style={styles.numbersSection}>
-        <Text style={styles.sectionTitle}>Emergency Numbers</Text>
+      <View style={styles.sectionContainer}>
+        <Text style={[theme.typography.headingM, styles.sectionTitle, { color: theme.colors.ivory }]}>Emergency Numbers</Text>
         <ContactRow
-          icon="call"
+          icon="shield-checkmark"
           title="Police"
           number={EMERGENCY_NUMBERS[currentCountry]?.police || '100'}
           onPress={() => callEmergency(EMERGENCY_NUMBERS[currentCountry]?.police)}
+          iconColor={theme.colors.sapphire || '#2196F3'}
         />
         <ContactRow
           icon="medical"
           title="Ambulance"
           number={EMERGENCY_NUMBERS[currentCountry]?.ambulance || '108'}
           onPress={() => callEmergency(EMERGENCY_NUMBERS[currentCountry]?.ambulance)}
+          iconColor={theme.colors.emerald}
         />
         <ContactRow
           icon="flame"
           title="Fire Department"
           number={EMERGENCY_NUMBERS[currentCountry]?.fire || '101'}
           onPress={() => callEmergency(EMERGENCY_NUMBERS[currentCountry]?.fire)}
+          iconColor={theme.colors.crimson}
         />
       </View>
 
       {/* Local Services */}
-      <View style={styles.servicesSection}>
-        <Text style={styles.sectionTitle}>Nearby Services ({currentCity})</Text>
-        <View style={styles.serviceRow}>
-          <TouchableOpacity style={styles.serviceButton}>
-            <Ionicons name="hospital" size={20} color="#4CAF50" />
-            <Text style={styles.serviceText}>Hospitals</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.serviceButton}>
-            <Ionicons name="shield-checkmark" size={20} color="#2196F3" />
-            <Text style={styles.serviceText}>Police Stations</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.serviceButton}>
-            <Ionicons name="flag" size={20} color="#FF9800" />
-            <Text style={styles.serviceText}>Embassies</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.sectionContainer}>
+        <Text style={[theme.typography.headingM, styles.sectionTitle, { color: theme.colors.ivory }]}>Nearby Services ({currentCity})</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 8 }}>
+          <GlassCard style={styles.serviceButton} glowOnPress={false}>
+            <Ionicons name="medical" size={24} color={theme.colors.emerald} />
+            <Text style={[theme.typography.label, { color: theme.colors.ivory, marginTop: 8 }]}>Hospitals</Text>
+          </GlassCard>
+          <GlassCard style={styles.serviceButton} glowOnPress={false}>
+            <Ionicons name="shield-checkmark" size={24} color={theme.colors.sapphire || '#2196F3'} />
+            <Text style={[theme.typography.label, { color: theme.colors.ivory, marginTop: 8 }]}>Police</Text>
+          </GlassCard>
+          <GlassCard style={styles.serviceButton} glowOnPress={false}>
+            <Ionicons name="flag" size={24} color={theme.colors.gold} />
+            <Text style={[theme.typography.label, { color: theme.colors.ivory, marginTop: 8 }]}>Embassies</Text>
+          </GlassCard>
+        </ScrollView>
       </View>
 
       {/* Personal Emergency Contacts */}
-      <View style={styles.contactsSection}>
-        <Text style={styles.sectionTitle}>My Emergency Contacts</Text>
-        <View style={styles.contactList}>
-          <ContactRow
-            icon="person"
-            title="Family - Priya"
-            number="+91 98765 43210"
-            onPress={() => callEmergency('+91 98765 43210')}
-          />
-          <ContactRow
-            icon="person"
-            title="Friend - Rohan"
-            number="+91 99887 77665"
-            onPress={() => callEmergency('+91 99887 77665')}
-          />
-        </View>
+      <View style={[styles.sectionContainer, { paddingBottom: 20 }]}>
+        <Text style={[theme.typography.headingM, styles.sectionTitle, { color: theme.colors.ivory }]}>My Emergency Contacts</Text>
+        <ContactRow
+          icon="person"
+          title="Family - Priya"
+          number="+91 98765 43210"
+          onPress={() => callEmergency('+91 98765 43210')}
+          iconColor={theme.colors.gold}
+        />
+        <ContactRow
+          icon="person"
+          title="Friend - Rohan"
+          number="+91 99887 77665"
+          onPress={() => callEmergency('+91 99887 77665')}
+          iconColor={theme.colors.gold}
+        />
       </View>
     </ScrollView>
   );
@@ -232,112 +259,72 @@ export default function EmergencyScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#050b18',
   },
   header: {
     padding: 20,
     paddingTop: 60,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
     alignItems: 'center',
-  },
-  title: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '700',
+    zIndex: 10,
   },
   subtitle: {
-    color: '#b0b4c3',
-    fontSize: 13,
     marginTop: 6,
     textAlign: 'center',
   },
 
   sosContainer: {
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 32,
     marginBottom: 32,
   },
   sosButton: {
-    backgroundColor: '#FF4444',
     width: 160,
     height: 160,
     borderRadius: 80,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#FF4444',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.5,
     shadowRadius: 20,
     elevation: 10,
   },
-  sosButtonActive: {
-    backgroundColor: '#CC0000',
-    transform: [{ scale: 1.05 }],
-  },
   sosText: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '800',
     marginTop: 8,
   },
   sosSubtext: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 12,
     marginTop: 4,
   },
   holdCounter: {
-    color: '#FF4444',
     fontSize: 16,
     fontWeight: '700',
     marginTop: 12,
   },
 
   countrySelector: {
-    paddingHorizontal: 20,
     marginBottom: 24,
   },
   countryChip: {
-    backgroundColor: '#1f2740',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
     marginRight: 12,
-  },
-  countryChipActive: {
-    backgroundColor: '#ff7a45',
-  },
-  countryText: {
-    color: '#d0d3e0',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  countryTextActive: {
-    color: '#ffffff',
+    borderWidth: 1,
   },
 
-  numbersSection: {
+  sectionContainer: {
     paddingHorizontal: 20,
     marginBottom: 24,
-  },
-  servicesSection: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  contactsSection: {
-    paddingHorizontal: 20,
   },
   sectionTitle: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '700',
     marginBottom: 16,
   },
 
   contactRow: {
-    backgroundColor: '#161b2b',
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    borderRadius: 16,
     marginBottom: 12,
   },
   contactIcon: {
@@ -351,34 +338,16 @@ const styles = StyleSheet.create({
   contactInfo: {
     flex: 1,
   },
-  contactTitle: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  contactNumber: {
-    color: '#b0b4c3',
-    fontSize: 14,
-    marginTop: 2,
+  callIcon: {
+    padding: 8,
   },
 
-  serviceRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
   serviceButton: {
-    flex: 1,
-    backgroundColor: '#161b2b',
-    flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
     justifyContent: 'center',
-  },
-  serviceText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
+    padding: 16,
+    width: 100,
+    height: 100,
+    marginRight: 12,
   },
 });

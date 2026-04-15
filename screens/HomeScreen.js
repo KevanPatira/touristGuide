@@ -1,7 +1,6 @@
 // screens/HomeScreen.js
 import React, { useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
-
 import {
   View,
   Text,
@@ -12,34 +11,27 @@ import {
   ImageBackground,
   ScrollView,
   Dimensions,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../constants/ThemeContext';
+
+import FloatingParticles from '../components/ui/FloatingParticles';
+import GoldShimmerText from '../components/ui/GoldShimmerText';
+import StaggerRevealText from '../components/ui/StaggerRevealText';
+import GlassCard from '../components/ui/GlassCard';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-// data for the quick tools
+// Data for quick tools
 const tools = [
-  { id: '1', title: 'Image Translator', icon: 'image', color: '#8A2BE2' },
-  { id: '2', title: 'Voice Translator', icon: 'mic', color: '#FF1493' },
-  { id: '3', title: 'Smart Navigation', icon: 'map', color: '#1E90FF' },
-  { id: '4', title: 'Currency Converter', icon: 'cash', color: '#2E8B57' },
-  { id: '5', title: 'Weather Forecast', icon: 'cloud', color: '#00CED1' },
-  { id: '6', title: 'Emergency SOS', icon: 'alert', color: '#FF4500' },
-];
-
-// data for recently visited cities
-const recentCities = [
-  { name: 'Paris', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&q=80' },
-  { name: 'Tokyo', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400&q=80' },
-  { name: 'Dubai', image: 'https://imgs.search.brave.com/Lb_TyXxskfttCK-VGotEEfP1UILC49nouoJUdOhEt7w/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9keW5h/bWljLW1lZGlhLnRh/Y2RuLmNvbS9tZWRp/YS9hdHRyYWN0aW9u/cy1zcGxpY2Utc3Bw/LTY3NHg0NDYvMTIv/OGEvZGEvYjMuanBn' },
-  { name: 'New York', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=400&q=80' },
-];
-
-const NOTIFICATIONS = [
-  { id: '1', icon: 'checkmark-circle', color: '#4CAF50', title: 'Welcome to TouristGuide!', time: 'Just now', read: false },
-  { id: '2', icon: 'earth', color: '#03A9F4', title: '320+ Indian places now available in Explore', time: '2h ago', read: false },
-  { id: '3', icon: 'navigate', color: '#ff7a45', title: 'Smart Navigation updated with new features', time: '1d ago', read: true },
-  { id: '4', icon: 'shield-checkmark', color: '#9C27B0', title: 'Your account is secured', time: '2d ago', read: true },
+  { id: '1', title: 'Image Translator', icon: 'image' },
+  { id: '2', title: 'Voice Translator', icon: 'mic' },
+  { id: '3', title: 'Smart Navigation', icon: 'map' },
+  { id: '4', title: 'Currency Converter', icon: 'cash' },
+  { id: '5', title: 'Weather Forecast', icon: 'cloud' },
+  { id: '6', title: 'Emergency SOS', icon: 'alert' },
 ];
 
 // Tool navigation map
@@ -52,36 +44,64 @@ const TOOL_NAV = {
   'Emergency SOS': 'Emergency',
 };
 
-// small reusable card for each tool
-function FeatureCard({ icon, title, color, onPress }) {
+// Data for destination mood board / recently visited
+const recentCities = [
+  { name: 'Paris', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&q=80', flag: '🇫🇷' },
+  { name: 'Tokyo', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400&q=80', flag: '🇯🇵' },
+  { name: 'Dubai', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=400&q=80', flag: '🇦🇪' },
+  { name: 'New York', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=400&q=80', flag: '🇺🇸' },
+];
+
+const NOTIFICATIONS = [
+  { id: '1', icon: 'checkmark-circle', title: 'Welcome to TouristGuide!', time: 'Just now', read: false },
+  { id: '2', icon: 'earth', title: '320+ places now available in Explore', time: '2h ago', read: false },
+];
+
+function FeatureCard({ icon, title, onPress }) {
+  const { theme } = useTheme();
+  
   return (
-    <TouchableOpacity style={styles.toolCard} onPress={onPress} activeOpacity={0.7}>
-      <View style={[styles.iconWrapper, { backgroundColor: color + '22' }]}>
-        <Ionicons name={icon} size={24} color={color} />
+    <GlassCard style={styles.toolCard} onPress={onPress}>
+      <View style={styles.iconWrapper}>
+        <Ionicons name={icon} size={24} color={theme.colors.gold} />
       </View>
-      <Text style={styles.toolTitle} numberOfLines={2}>{title}</Text>
-    </TouchableOpacity>
+      <Text style={[theme.typography.label, styles.toolTitle, { color: theme.colors.ivory }]}>
+        {title}
+      </Text>
+      <Ionicons name="chevron-forward" size={14} color={theme.colors.goldMuted} style={styles.arrowIcon} />
+    </GlassCard>
   );
 }
 
-// card for each recently visited city
 function CityCard({ city }) {
+  const { theme } = useTheme();
+  
   return (
-    <ImageBackground
-      source={{ uri: city.image }}
-      style={styles.cityCard}
-      imageStyle={{ borderRadius: 14 }}
-    >
-      <View style={styles.cityCardOverlay}>
-        <Text style={styles.cityName}>{city.name}</Text>
-        <Text style={styles.citySubtitle}>3 spots visited</Text>
-      </View>
-    </ImageBackground>
+    <TouchableOpacity activeOpacity={0.8}>
+      <ImageBackground
+        source={{ uri: city.image }}
+        style={styles.cityCard}
+        imageStyle={{ borderRadius: 14 }}
+      >
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.8)']}
+          style={styles.cityCardOverlay}
+        >
+          <Text style={[theme.typography.displayM, styles.cityName, { color: theme.colors.ivory }]}>
+            {city.name}
+          </Text>
+          <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>
+            {city.flag} Destination
+          </Text>
+        </LinearGradient>
+      </ImageBackground>
+    </TouchableOpacity>
   );
 }
 
 export default function HomeScreen() {
   const navigation = useNavigation();
+  const { theme } = useTheme();
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState(NOTIFICATIONS);
 
@@ -93,76 +113,84 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* ── TOP HEADER (fixed, no search bar) ──────────────── */}
-      <View style={styles.headerArea}>
+      {/* ── BACKGROUND ────────────────────────────────────── */}
+      <LinearGradient
+        colors={[theme.colors.obsidian, theme.colors.deepNavy]}
+        style={StyleSheet.absoluteFill}
+      />
+      <FloatingParticles count={20} color={theme.colors.borderGold} />
+
+      {/* ── TOP HEADER ────────────────────────────────────── */}
+      <View style={[styles.headerArea, { backgroundColor: 'transparent' }]}>
         <View style={styles.headerTop}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>Good Morning 🌤️</Text>
-            <Text style={styles.heading}>Where to next?</Text>
+            <Text style={[theme.typography.caption, { color: theme.colors.emerald, marginBottom: 4 }]}>
+              Good Morning 🌤️
+            </Text>
+            <GoldShimmerText
+              text="Where to next?"
+              style={theme.typography.displayL}
+              delay={300}
+            />
           </View>
-          {/* Notification bell */}
+          
           <TouchableOpacity
-            style={styles.bellButton}
+            style={[styles.bellButton, { backgroundColor: theme.colors.glassBg, borderColor: theme.colors.glassStroke, borderWidth: 1 }]}
             onPress={() => setShowNotifications(true)}
           >
-            <Ionicons name="notifications-outline" size={24} color="#fff" />
+            <Ionicons name="notifications-outline" size={24} color={theme.colors.gold} />
             {unreadCount > 0 && (
-              <View style={styles.bellBadge}>
+              <View style={[styles.bellBadge, { backgroundColor: theme.colors.crimson }]}>
                 <Text style={styles.bellBadgeText}>{unreadCount}</Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
-        <Text style={styles.subheading}>
-          Explore the world with confidence.
-        </Text>
-      </View>
-
-      {/* ── QUICK TOOLS GRID (fixed, always visible) ───────── */}
-      <View style={styles.toolsSection}>
-        <Text style={styles.sectionTitle}>Quick Tools</Text>
-        <View style={styles.toolsGrid}>
-          {tools.map(item => (
-            <FeatureCard
-              key={item.id}
-              icon={item.icon}
-              title={item.title}
-              color={item.color}
-              onPress={() => navigation.navigate(TOOL_NAV[item.title])}
-            />
-          ))}
-        </View>
+        <StaggerRevealText
+          text="Explore the world with confidence."
+          style={[theme.typography.body, { color: theme.colors.parchment, marginTop: 8 }]}
+          staggerDelay={20}
+        />
       </View>
 
       {/* ── SCROLLABLE LOWER SECTION ───────────────────────── */}
       <ScrollView
         style={styles.lowerScroll}
         contentContainerStyle={styles.lowerContent}
-        showsVerticalScrollIndicator={true}
-        bounces={true}
+        showsVerticalScrollIndicator={false}
       >
-        {/* promo banner */}
-        <View style={styles.banner}>
-          <Text style={styles.bannerTitle}>Travel Smart 🌍</Text>
-          <Text style={styles.bannerText}>
-            Offline mode now available. Try it on your next trip.
-          </Text>
+        {/* Quick Tools Header */}
+        <Text style={[theme.typography.headingS, { color: theme.colors.gold, marginBottom: 16 }]}>
+          Essential Tools
+        </Text>
+        
+        {/* Grid */}
+        <View style={styles.toolsGrid}>
+          {tools.map(item => (
+            <FeatureCard
+              key={item.id}
+              icon={item.icon}
+              title={item.title}
+              onPress={() => navigation.navigate(TOOL_NAV[item.title])}
+            />
+          ))}
         </View>
 
-        {/* recently visited */}
-        <Text style={styles.sectionTitle}>Recently Visited</Text>
+        {/* Destination Mood Board */}
+        <Text style={[theme.typography.headingS, { color: theme.colors.gold, marginTop: 30, marginBottom: 16 }]}>
+          Destination Mood Board
+        </Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingRight: 20 }}
         >
           {recentCities.map(city => (
-            <CityCard key={city.name} city={city} />
+             <CityCard key={city.name} city={city} />
           ))}
         </ScrollView>
 
-        {/* bottom breathing room */}
-        <View style={{ height: 30 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
 
       {/* ── NOTIFICATION MODAL ─────────────────────────────── */}
@@ -175,25 +203,25 @@ export default function HomeScreen() {
         <TouchableWithoutFeedback onPress={() => setShowNotifications(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
-              <View style={styles.notifPanel}>
+              <View style={[styles.notifPanel, { backgroundColor: theme.colors.midnight, borderWidth: 1, borderColor: theme.colors.borderSilver }]}>
                 <View style={styles.notifHeader}>
-                  <Text style={styles.notifTitle}>Notifications</Text>
+                  <Text style={[theme.typography.headingS, { color: theme.colors.ivory }]}>Notifications</Text>
                   {unreadCount > 0 && (
                     <TouchableOpacity onPress={markAllRead}>
-                      <Text style={styles.markReadText}>Mark all read</Text>
+                      <Text style={[theme.typography.caption, { color: theme.colors.gold }]}>Mark all read</Text>
                     </TouchableOpacity>
                   )}
                 </View>
                 {notifications.map(n => (
-                  <View key={n.id} style={[styles.notifRow, !n.read && styles.notifUnread]}>
-                    <View style={[styles.notifIcon, { backgroundColor: n.color + '22' }]}>
-                      <Ionicons name={n.icon} size={18} color={n.color} />
+                  <View key={n.id} style={[styles.notifRow, !n.read && { backgroundColor: theme.colors.glassBg }]}>
+                    <View style={[styles.notifIcon, { backgroundColor: 'rgba(201, 168, 76, 0.15)' }]}>
+                      <Ionicons name={n.icon} size={18} color={theme.colors.emerald} />
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.notifText}>{n.title}</Text>
-                      <Text style={styles.notifTime}>{n.time}</Text>
+                      <Text style={[theme.typography.body, { color: theme.colors.ivory, fontSize: 13 }]}>{n.title}</Text>
+                      <Text style={[theme.typography.caption, { color: theme.colors.ash, marginTop: 2 }]}>{n.time}</Text>
                     </View>
-                    {!n.read && <View style={styles.unreadDot} />}
+                    {!n.read && <View style={[styles.unreadDot, { backgroundColor: theme.colors.gold }]} />}
                   </View>
                 ))}
               </View>
@@ -205,156 +233,106 @@ export default function HomeScreen() {
   );
 }
 
-// ── Calculate tool card width: 3 per row with gaps ──────────
-const TOOL_GAP = 10;
-const TOOL_CARD_W = (SCREEN_W - 40 - TOOL_GAP * 2) / 3;
+const TOOL_GAP = 12;
+const TOOL_CARD_W = (SCREEN_W - 40 - TOOL_GAP) / 2; // 2 cols
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#050b18' },
-
-  // Header — compact, no search bar
+  container: { flex: 1 },
   headerArea: {
-    paddingTop: 56,
+    paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 14,
-    backgroundColor: '#131b33',
+    paddingBottom: 20,
+    zIndex: 10,
   },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  greeting: { color: '#ffffff', fontSize: 14, marginBottom: 2 },
-  heading: { color: '#ffffff', fontSize: 24, fontWeight: '700' },
-  subheading: { color: '#b0b4c3', fontSize: 13, marginTop: 4 },
-
-  // Quick tools — fixed area
-  toolsSection: {
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 4,
+  bellButton: {
+    width: 44, height: 44, borderRadius: 22,
+    justifyContent: 'center', alignItems: 'center',
   },
-  sectionTitle: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 10,
-  },
-  toolsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: TOOL_GAP,
-  },
-  toolCard: {
-    backgroundColor: '#161b2b',
-    width: TOOL_CARD_W,
-    borderRadius: 16,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  iconWrapper: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  toolTitle: {
-    color: '#ffffff',
-    fontSize: 11,
-    marginTop: 7,
-    textAlign: 'center',
+  bellBadge: {
+    position: 'absolute', top: 4, right: 6,
+    borderRadius: 10, minWidth: 18, height: 18,
+    justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: 4,
   },
-
-  // Scrollable lower section
+  bellBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   lowerScroll: {
     flex: 1,
   },
   lowerContent: {
     paddingHorizontal: 20,
-    paddingTop: 10,
+    paddingBottom: 20,
   },
-
-  // Banner
-  banner: {
-    backgroundColor: '#ff7a45',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 14,
+  toolsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: TOOL_GAP,
   },
-  bannerTitle: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
-  bannerText: { color: '#fff5ec', fontSize: 12, marginTop: 4 },
-
-  // City cards
+  toolCard: {
+    width: TOOL_CARD_W,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    minHeight: 120,
+  },
+  iconWrapper: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(201, 168, 76, 0.1)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  toolTitle: {
+    marginTop: 16,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  arrowIcon: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+  },
   cityCard: {
-    width: 130,
-    height: 160,
-    marginRight: 10,
+    width: 200,
+    height: 250,
+    marginRight: 16,
     borderRadius: 14,
+    overflow: 'hidden',
     justifyContent: 'flex-end',
   },
   cityCardOverlay: {
-    padding: 10,
-    borderBottomLeftRadius: 14,
-    borderBottomRightRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 16,
+    paddingTop: 40, // gradient area
   },
   cityName: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
+    marginBottom: 4,
   },
-  citySubtitle: { color: '#b0b4c3', fontSize: 11, marginTop: 2 },
-
-  // Bell
-  bellButton: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: '#1f2740',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  bellBadge: {
-    position: 'absolute', top: 6, right: 6,
-    backgroundColor: '#ff4444', borderRadius: 10,
-    minWidth: 18, height: 18,
-    justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  bellBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-
-  // Notification modal
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-start', paddingTop: 110,
   },
   notifPanel: {
     marginHorizontal: 16,
-    backgroundColor: '#161b2b',
     borderRadius: 20, padding: 16,
-    shadowColor: '#000', shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: 4 }, shadowRadius: 16, elevation: 12,
   },
   notifHeader: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginBottom: 14,
   },
-  notifTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  markReadText: { color: '#ff7a45', fontSize: 12, fontWeight: '600' },
   notifRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#252a3f',
+    paddingVertical: 12, borderRadius: 12,
+    marginHorizontal: -8, paddingHorizontal: 8,
   },
-  notifUnread: { backgroundColor: '#1a2240', borderRadius: 12, paddingHorizontal: 8, marginHorizontal: -8 },
   notifIcon: {
     width: 36, height: 36, borderRadius: 18,
     justifyContent: 'center', alignItems: 'center',
   },
-  notifText: { color: '#ddd', fontSize: 13, fontWeight: '500' },
-  notifTime: { color: '#666', fontSize: 11, marginTop: 2 },
   unreadDot: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: '#ff7a45', marginLeft: 8,
+    width: 8, height: 8, borderRadius: 4, marginLeft: 8,
   },
 });
