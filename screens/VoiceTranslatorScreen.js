@@ -9,6 +9,12 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../constants/ThemeContext';
+
+import GlassCard from '../components/ui/GlassCard';
+import PressableGoldButton from '../components/ui/PressableGoldButton';
+import StaggerRevealText from '../components/ui/StaggerRevealText';
+import FloatingParticles from '../components/ui/FloatingParticles';
 
 const FAKE_LANGUAGES = {
   'English': { code: 'en', native: 'English' },
@@ -29,30 +35,35 @@ const FAKE_SPEECH = [
 ];
 
 function LanguagePicker({ selectedLang, onLangChange, label }) {
+  const { theme } = useTheme();
   return (
     <View style={styles.langPicker}>
-      <Text style={styles.pickerLabel}>{label}</Text>
+      <Text style={[theme.typography.body, styles.pickerLabel, { color: theme.colors.ivory }]}>{label}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={styles.langRow}>
-          {Object.entries(FAKE_LANGUAGES).map(([name, data]) => (
-            <TouchableOpacity
-              key={name}
-              style={[
-                styles.langButton,
-                selectedLang === name && styles.langButtonActive,
-              ]}
-              onPress={() => onLangChange(name)}
-            >
-              <Text
+          {Object.entries(FAKE_LANGUAGES).map(([name, data]) => {
+            const isActive = selectedLang === name;
+            return (
+              <TouchableOpacity
+                key={name}
                 style={[
-                  styles.langText,
-                  selectedLang === name && styles.langTextActive,
+                  styles.langButton,
+                  { borderColor: isActive ? theme.colors.gold : theme.colors.borderSilver },
+                  isActive && { backgroundColor: theme.colors.gold }
                 ]}
+                onPress={() => onLangChange(name)}
               >
-                {data.native}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  style={[
+                    theme.typography.label,
+                    { color: isActive ? theme.colors.obsidian : theme.colors.parchment }
+                  ]}
+                >
+                  {data.native}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </ScrollView>
     </View>
@@ -60,6 +71,7 @@ function LanguagePicker({ selectedLang, onLangChange, label }) {
 }
 
 function ListeningAnimation() {
+  const { theme } = useTheme();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(0)).current;
 
@@ -98,17 +110,18 @@ function ListeningAnimation() {
         },
       ]}
     >
-      <Ionicons name="mic" size={60} color="#ff7a45" />
+      <Ionicons name="mic" size={60} color={theme.colors.gold} />
       <View style={styles.soundWaves}>
-        <View style={[styles.wave, styles.wave1]} />
-        <View style={[styles.wave, styles.wave2]} />
-        <View style={[styles.wave, styles.wave3]} />
+        <View style={[styles.wave, styles.wave1, { backgroundColor: theme.colors.gold + '66' }]} />
+        <View style={[styles.wave, styles.wave2, { backgroundColor: theme.colors.gold + '66' }]} />
+        <View style={[styles.wave, styles.wave3, { backgroundColor: theme.colors.gold + '66' }]} />
       </View>
     </Animated.View>
   );
 }
 
 export default function VoiceTranslatorScreen() {
+  const { theme } = useTheme();
   const [status, setStatus] = useState('idle'); // idle, listening, processing, result
   const [detectedSpeech, setDetectedSpeech] = useState('');
   const [translatedText, setTranslatedText] = useState('');
@@ -151,134 +164,136 @@ export default function VoiceTranslatorScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ flexGrow: 1 }}>
+    <View style={[styles.container, { backgroundColor: theme.colors.obsidian }]}>
+      <FloatingParticles count={10} />
+
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Voice Translator</Text>
-        <Text style={styles.subtitle}>
+      <View style={[styles.header, { backgroundColor: theme.colors.midnight }]}>
+        <StaggerRevealText text="Voice Translator" style={[theme.typography.displayS, { color: theme.colors.gold }]} />
+        <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 4 }]}>
           Speak in one language, hear it in another
         </Text>
       </View>
 
-      {/* Main content */}
-      <View style={styles.mainContent}>
-        {/* Listening/Recording area */}
-        {status === 'idle' && (
-          <View style={styles.idleArea}>
-            <Ionicons name="mic-outline" size={100} color="#666" />
-            <Text style={styles.idleText}>Tap microphone to start speaking</Text>
-          </View>
-        )}
-
-        {status === 'listening' && (
-          <View style={styles.listeningArea}>
-            <ListeningAnimation />
-            <Text style={styles.listeningText}>Listening...</Text>
-            <Text style={styles.statusText}>2 seconds remaining</Text>
-          </View>
-        )}
-
-        {status === 'processing' && (
-          <View style={styles.processingArea}>
-            <Ionicons name="hourglass" size={48} color="#ff7a45" />
-            <Text style={styles.processingText}>Processing speech...</Text>
-            <Text style={styles.detectedText}>{detectedSpeech}</Text>
-          </View>
-        )}
-
-        {status === 'result' && (
-          <View style={styles.resultArea}>
-            {/* Detected speech */}
-            <View style={styles.speechCard}>
-              <Text style={styles.cardTitle}>You said:</Text>
-              <Text style={styles.speechText}>{detectedSpeech}</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Main content */}
+        <View style={styles.mainContent}>
+          {/* Listening/Recording area */}
+          {status === 'idle' && (
+            <View style={styles.idleArea}>
+              <Ionicons name="mic-outline" size={100} color={theme.colors.parchment} />
+              <Text style={[theme.typography.body, styles.idleText, { color: theme.colors.ivory }]}>Tap microphone to start speaking</Text>
             </View>
+          )}
 
-            {/* Language picker */}
-            <LanguagePicker
-              selectedLang={toLang}
-              onLangChange={setToLang}
-              label="Translate to:"
-            />
-
-            {/* Translation */}
-            <View style={styles.translationCard}>
-              <Text style={styles.cardTitle}>Translation:</Text>
-              <TouchableOpacity style={styles.playButton}>
-                <Ionicons name="play" size={20} color="#ffffff" />
-                <Text style={styles.translatedText}>{translatedText}</Text>
-              </TouchableOpacity>
+          {status === 'listening' && (
+            <View style={styles.listeningArea}>
+              <ListeningAnimation />
+              <Text style={[theme.typography.headingM, styles.listeningText, { color: theme.colors.ivory, marginTop: 40 }]}>Listening...</Text>
+              <Text style={[theme.typography.caption, styles.statusText, { color: theme.colors.parchment }]}>2 seconds remaining</Text>
             </View>
-          </View>
-        )}
+          )}
 
-        {/* Action buttons */}
-        {status !== 'idle' && (
-          <View style={styles.actionRow}>
-            <TouchableOpacity 
-              style={styles.secondaryButton} 
-              onPress={handleNewRecording}
-            >
-              <Text style={styles.secondaryButtonText}>New Recording</Text>
+          {status === 'processing' && (
+            <View style={styles.processingArea}>
+              <Ionicons name="hourglass" size={48} color={theme.colors.gold} />
+              <Text style={[theme.typography.headingM, styles.processingText, { color: theme.colors.ivory, marginTop: 16 }]}>Processing speech...</Text>
+              <Text style={[theme.typography.body, styles.detectedText, { color: theme.colors.gold, marginTop: 12 }]}>{detectedSpeech}</Text>
+            </View>
+          )}
+
+          {status === 'result' && (
+            <View style={styles.resultArea}>
+              {/* Detected speech */}
+              <GlassCard style={styles.speechCard} glowOnPress={false}>
+                <Text style={[theme.typography.caption, styles.cardTitle, { color: theme.colors.parchment }]}>You said:</Text>
+                <Text style={[theme.typography.body, styles.speechText, { color: theme.colors.ivory }]}>{detectedSpeech}</Text>
+              </GlassCard>
+
+              {/* Language picker */}
+              <LanguagePicker
+                selectedLang={toLang}
+                onLangChange={setToLang}
+                label="Translate to:"
+              />
+
+              {/* Translation */}
+              <GlassCard style={styles.translationCard} glowOnPress={false}>
+                <Text style={[theme.typography.caption, styles.cardTitle, { color: theme.colors.parchment }]}>Translation:</Text>
+                <TouchableOpacity style={styles.playButton}>
+                  <Ionicons name="play" size={20} color={theme.colors.gold} />
+                  <Text style={[theme.typography.headingM, styles.translatedText, { color: theme.colors.gold }]}>{translatedText}</Text>
+                </TouchableOpacity>
+              </GlassCard>
+            </View>
+          )}
+
+          {/* Action buttons */}
+          {status !== 'idle' && (
+            <View style={styles.actionRow}>
+              <PressableGoldButton 
+                label="New Recording" 
+                onPress={handleNewRecording}
+                variant="outline"
+                style={{ flex: 1, marginRight: 8 }}
+              />
+              
+              {status === 'listening' && (
+                <TouchableOpacity style={[styles.stopButton, { backgroundColor: theme.colors.crimson }]} onPress={() => setStatus('idle')}>
+                  <Text style={[theme.typography.label, { color: theme.colors.ivory }]}>Stop</Text>
+                </TouchableOpacity>
+              )}
+              
+              {status === 'processing' && (
+                <PressableGoldButton 
+                  label="Translate" 
+                  onPress={handleProcess}
+                  style={{ flex: 1, marginLeft: 8 }}
+                />
+              )}
+            </View>
+          )}
+
+          {status === 'idle' && (
+            <TouchableOpacity style={[styles.recordButton, { backgroundColor: theme.colors.gold }]} onPress={handleRecord}>
+              <Ionicons name="mic" size={54} color={theme.colors.obsidian} />
             </TouchableOpacity>
-            
-            {status === 'listening' && (
-              <TouchableOpacity style={styles.stopButton}>
-                <Text style={styles.stopButtonText}>Stop</Text>
-              </TouchableOpacity>
-            )}
-            
-            {status === 'processing' && (
-              <TouchableOpacity style={styles.primaryButton} onPress={handleProcess}>
-                <Text style={styles.primaryButtonText}>Translate</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        {status === 'idle' && (
-          <TouchableOpacity style={styles.recordButton} onPress={handleRecord}>
-            <Ionicons name="mic" size={64} color="#ffffff" />
-          </TouchableOpacity>
-        )}
-      </View>
-    </ScrollView>
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#050b18',
   },
   header: {
     padding: 20,
     paddingTop: 60,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    zIndex: 10,
   },
-  title: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '700',
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 40,
   },
-  subtitle: {
-    color: '#b0b4c3',
-    fontSize: 13,
-    marginTop: 6,
-  },
-
   mainContent: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    justifyContent: 'center',
+    minHeight: 300,
   },
 
   idleArea: {
     alignItems: 'center',
   },
   idleText: {
-    color: '#b0b4c3',
-    fontSize: 16,
     marginTop: 16,
     textAlign: 'center',
   },
@@ -287,14 +302,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   listeningText: {
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 20,
+    textAlign: 'center',
   },
   statusText: {
-    color: '#b0b4c3',
-    fontSize: 14,
     marginTop: 8,
   },
 
@@ -302,16 +312,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   processingText: {
-    color: '#ffffff',
-    fontSize: 18,
-    marginTop: 16,
-    marginBottom: 12,
+    textAlign: 'center',
   },
   detectedText: {
-    color: '#ff7a45',
-    fontSize: 16,
-    fontWeight: '600',
     textAlign: 'center',
+    paddingHorizontal: 20,
   },
 
   resultArea: {
@@ -319,72 +324,53 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   speechCard: {
-    backgroundColor: '#161b2b',
     width: '100%',
     padding: 20,
-    borderRadius: 20,
     marginBottom: 20,
   },
   translationCard: {
-    backgroundColor: '#1f2740',
     width: '100%',
     padding: 20,
-    borderRadius: 20,
   },
   cardTitle: {
-    color: '#b0b4c3',
-    fontSize: 14,
     marginBottom: 8,
   },
   speechText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
+    //
   },
   playButton: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   translatedText: {
-    color: '#ff7a45',
-    fontSize: 18,
-    fontWeight: '600',
     marginLeft: 12,
   },
 
   langPicker: {
     width: '100%',
     marginVertical: 16,
+    marginBottom: 24,
   },
   pickerLabel: {
-    color: '#ffffff',
-    fontSize: 14,
     marginBottom: 12,
   },
   langRow: {
     flexDirection: 'row',
     gap: 8,
+    paddingBottom: 4,
   },
   langButton: {
-    backgroundColor: '#252a3f',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
-  },
-  langButtonActive: {
-    backgroundColor: '#ff7a45',
-  },
-  langText: {
-    color: '#d0d3e0',
-    fontSize: 14,
-  },
-  langTextActive: {
-    color: '#ffffff',
-    fontWeight: '600',
+    borderWidth: 1,
   },
 
   micContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
+    width: 100,
+    height: 100,
   },
   soundWaves: {
     position: 'absolute',
@@ -394,7 +380,6 @@ const styles = StyleSheet.create({
   },
   wave: {
     position: 'absolute',
-    backgroundColor: 'rgba(255, 122, 69, 0.4)',
     borderRadius: 3,
   },
   wave1: {
@@ -414,52 +399,32 @@ const styles = StyleSheet.create({
   },
 
   recordButton: {
-    backgroundColor: '#ff7a45',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 40,
+    elevation: 8,
+    shadowColor: '#d4af37',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
 
   actionRow: {
     flexDirection: 'row',
-    gap: 16,
-    marginTop: 32,
+    marginTop: 40,
     width: '100%',
-    justifyContent: 'center',
-  },
-  primaryButton: {
-    backgroundColor: '#ff7a45',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 20,
-  },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  secondaryButton: {
-    backgroundColor: '#1f2740',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 20,
-  },
-  secondaryButtonText: {
-    color: '#ffffff',
-    fontSize: 15,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   stopButton: {
-    backgroundColor: '#ff4444',
     paddingHorizontal: 24,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 20,
-  },
-  stopButtonText: {
-    color: '#ffffff',
-    fontWeight: '600',
-    fontSize: 15,
+    flex: 1,
+    marginLeft: 8,
+    alignItems: 'center',
   },
 });

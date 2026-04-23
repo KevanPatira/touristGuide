@@ -1,302 +1,409 @@
-// screens/LoginScreen.js
-import React, { useState } from 'react';
+// screens/LoginScreen.js — Email/password authentication via Express API
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Alert,
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  KeyboardAvoidingView, Platform, Alert, Animated,
+  ScrollView, Dimensions, ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../constants/ThemeContext';
+import { useAuth } from '../constants/AuthContext';
 
-export default function LoginScreen({ onLoginSuccess }) {
+import GoldShimmerText from '../components/ui/GoldShimmerText';
+import PressableGoldButton from '../components/ui/PressableGoldButton';
+import GlassCard from '../components/ui/GlassCard';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+
+// Onboarding taglines
+const TAGLINES = [
+  { icon: 'compass', text: 'Discover hidden gems' },
+  { icon: 'navigate', text: 'Navigate with confidence' },
+  { icon: 'people', text: 'Connect with travelers' },
+];
+
+export default function LoginScreen({ navigation }) {
+  const { theme } = useTheme();
+  const { signIn } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [emailError, setEmailError] = useState('');
-  const [passwordError, setPasswordError] = useState('');
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const [activeTagline, setActiveTagline] = useState(0);
 
-  const validateEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
+  // Animations
+  const bgFade = useRef(new Animated.Value(0)).current;
+  const formSlide = useRef(new Animated.Value(40)).current;
+  const formOpacity = useRef(new Animated.Value(0)).current;
+  const taglineFade = useRef(new Animated.Value(1)).current;
+  const taglineSlide = useRef(new Animated.Value(0)).current;
+  const socialProofPulse = useRef(new Animated.Value(0.6)).current;
+  const emailBorderAnim = useRef(new Animated.Value(0)).current;
+  const passwordBorderAnim = useRef(new Animated.Value(0)).current;
 
-  const validatePassword = (password) => {
-    return password.length >= 6;
-  };
+  // Mount animations
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(bgFade, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.parallel([
+        Animated.timing(formOpacity, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.spring(formSlide, {
+          toValue: 0,
+          speed: 12,
+          bounciness: 5,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
 
-  const requestLocationPermission = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Location Access',
-          'Location permission is needed for Smart Navigation. You can enable it later in Settings.',
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (error) {
-      console.warn('Location permission request failed:', error);
+    // Social proof pulse
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(socialProofPulse, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(socialProofPulse, {
+          toValue: 0.6,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  // Tagline auto-rotate
+  useEffect(() => {
+    const timer = setInterval(() => {
+      // Fade out
+      Animated.parallel([
+        Animated.timing(taglineFade, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(taglineSlide, {
+          toValue: -20,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setActiveTagline(prev => (prev + 1) % TAGLINES.length);
+        taglineSlide.setValue(20);
+        // Fade in
+        Animated.parallel([
+          Animated.timing(taglineFade, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.spring(taglineSlide, {
+            toValue: 0,
+            speed: 15,
+            bounciness: 4,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
+    }, 3000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Focus animations for inputs
+  useEffect(() => {
+    Animated.timing(emailBorderAnim, {
+      toValue: emailFocused ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [emailFocused]);
+
+  useEffect(() => {
+    Animated.timing(passwordBorderAnim, {
+      toValue: passwordFocused ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [passwordFocused]);
+
+  const emailBorderColor = emailBorderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [theme.colors.borderSilver, theme.colors.gold],
+  });
+
+  const passwordBorderColor = passwordBorderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [theme.colors.borderSilver, theme.colors.gold],
+  });
+
+  // ═══ Email/Password Sign-In ═══
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Missing Fields', 'Please enter both email and password.');
+      return;
     }
-  };
-
-  const handleLogin = () => {
-    // Reset errors
-    setEmailError('');
-    setPasswordError('');
-
-    let hasError = false;
-
-    // Validate email
-    if (!email.trim()) {
-      setEmailError('Email is required');
-      hasError = true;
-    } else if (!validateEmail(email)) {
-      setEmailError('Please enter a valid email');
-      hasError = true;
-    }
-
-    // Validate password
-    if (!password.trim()) {
-      setPasswordError('Password is required');
-      hasError = true;
-    } else if (!validatePassword(password)) {
-      setPasswordError('Password must be at least 6 characters');
-      hasError = true;
-    }
-
-    if (hasError) return;
-
-    // Simulate API call
     setLoading(true);
-    setTimeout(async () => {
-      // Fake login logic - replace with real API later
-      if (email === 'demo@travel.com' && password === '123456') {
-        // Request location permission before proceeding
-        await requestLocationPermission();
-        onLoginSuccess({ email, password });
-      } else {
-        setEmailError('Invalid email or password');
-        setPasswordError('Invalid email or password');
-      }
-      setLoading(false);
-    }, 1500);
+    try {
+      await signIn(email.trim(), password);
+    } catch (error) {
+      let msg = 'An error occurred. Please try again.';
+      if (error.response?.status === 401) msg = 'Invalid email or password.';
+      else if (error.response?.status === 429) msg = 'Too many login attempts. Please try again later.';
+      else if (error.response?.data?.message) msg = error.response.data.message;
+      else if (error.response?.data?.errors) msg = error.response.data.errors.map(e => e.msg).join('\n');
+      Alert.alert('Login Failed', msg);
+    }
+    setLoading(false);
   };
 
-  const getPasswordStrength = (password) => {
-    if (password.length >= 8) return 'strong';
-    if (password.length >= 6) return 'medium';
-    return 'weak';
-  };
+  const currentTagline = TAGLINES[activeTagline];
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>
-          Sign in to access your travel tools
-        </Text>
-      </View>
-
-      {/* Email Input */}
-      <View style={styles.inputGroup}>
-        <View style={styles.inputContainer}>
-          <Ionicons name="mail-outline" size={20} color="#888" />
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#777"
-            value={email}
-            onChangeText={(text) => {
-              setEmail(text);
-              if (emailError) setEmailError('');
-            }}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            editable={!loading}
+    <View style={[styles.container, { backgroundColor: theme.colors.obsidian }]}>
+      {/* ═══ Background Image ═══ */}
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: bgFade }]}>
+        <ImageBackground
+          source={{ uri: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=60' }}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+        >
+          <LinearGradient
+            colors={[
+              'rgba(13,13,13,0.5)',
+              'rgba(13,13,13,0.75)',
+              'rgba(13,13,13,0.92)',
+              theme.colors.obsidian,
+            ]}
+            locations={[0, 0.3, 0.6, 0.85]}
+            style={StyleSheet.absoluteFill}
           />
-        </View>
-        {emailError ? (
-          <Text style={styles.errorText}>{emailError}</Text>
-        ) : null}
-      </View>
+        </ImageBackground>
+      </Animated.View>
 
-      {/* Password Input */}
-      <View style={styles.inputGroup}>
-        <View style={styles.inputContainer}>
-          <Ionicons name="lock-closed-outline" size={20} color="#888" />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#777"
-            value={password}
-            onChangeText={(text) => {
-              setPassword(text);
-              if (passwordError) setPasswordError('');
-            }}
-            secureTextEntry
-            editable={!loading}
-          />
-        </View>
-        {passwordError ? (
-          <Text style={styles.errorText}>{passwordError}</Text>
-        ) : null}
-        
-        {/* Password strength indicator */}
-        {password && !passwordError && (
-          <View style={styles.strengthBar}>
-            <View 
-              style={[
-                styles.strengthFill,
-                { width: `${Math.min((password.length / 12) * 100, 100)}%` }
-              ]}
-            />
-            <Text style={styles.strengthText}>
-              {getPasswordStrength(password).toUpperCase()}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Login Button */}
-      <TouchableOpacity 
-        style={[
-          styles.loginButton, 
-          (emailError || passwordError || !email || !password) && styles.loginButtonDisabled
-        ]}
-        onPress={handleLogin}
-        disabled={loading || !email || !password}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {loading ? (
-          <ActivityIndicator color="#ffffff" />
-        ) : (
-          <Text style={styles.loginButtonText}>Sign In</Text>
-        )}
-      </TouchableOpacity>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* ═══ Branding ═══ */}
+          <View style={styles.brandSection}>
+            <View style={[styles.logoBg, { borderColor: theme.colors.gold + '40' }]}>
+              <LinearGradient
+                colors={[theme.colors.gold + '15', 'transparent']}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+              />
+              <Ionicons name="compass-outline" size={52} color={theme.colors.gold} />
+            </View>
+            <GoldShimmerText
+              text="TouristGuide"
+              style={theme.typography.displayXL}
+              loop={false}
+              delay={300}
+            />
 
-      {/* Demo credentials */}
-      <View style={styles.demoInfo}>
-        <Text style={styles.demoText}>
-          Demo: demo@travel.com / 123456
-        </Text>
-      </View>
+            {/* Animated Tagline Carousel */}
+            <Animated.View
+              style={[
+                styles.taglineRow,
+                {
+                  opacity: taglineFade,
+                  transform: [{ translateY: taglineSlide }],
+                },
+              ]}
+            >
+              <Ionicons name={currentTagline.icon} size={16} color={theme.colors.gold} />
+              <Text style={[theme.typography.body, { color: theme.colors.parchment, marginLeft: 8 }]}>
+                {currentTagline.text}
+              </Text>
+            </Animated.View>
 
-      {/* Forgot password */}
-      <TouchableOpacity style={styles.forgotPassword}>
-        <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-      </TouchableOpacity>
-    </KeyboardAvoidingView>
+            {/* Pagination dots */}
+            <View style={styles.taglineDots}>
+              {TAGLINES.map((_, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.taglineDot,
+                    {
+                      backgroundColor: i === activeTagline ? theme.colors.gold : theme.colors.borderSilver,
+                      width: i === activeTagline ? 20 : 6,
+                    },
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+
+          {/* ═══ Login Form ═══ */}
+          <Animated.View style={{
+            opacity: formOpacity,
+            transform: [{ translateY: formSlide }],
+          }}>
+            <GlassCard style={styles.formCard} glowOnPress={false}>
+              <Text style={[theme.typography.headingS, { color: theme.colors.ivory, marginBottom: 20 }]}>
+                WELCOME BACK
+              </Text>
+
+              {/* Email */}
+              <Animated.View style={[styles.inputRow, {
+                backgroundColor: theme.colors.midnight,
+                borderColor: emailBorderColor,
+              }]}>
+                <Ionicons name="mail-outline" size={18} color={emailFocused ? theme.colors.gold : theme.colors.parchment} style={{ marginRight: 10 }} />
+                <TextInput
+                  placeholder="Email"
+                  placeholderTextColor={theme.colors.ash}
+                  style={[theme.typography.body, styles.input, { color: theme.colors.ivory }]}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  onFocus={() => setEmailFocused(true)}
+                  onBlur={() => setEmailFocused(false)}
+                />
+              </Animated.View>
+
+              {/* Password */}
+              <Animated.View style={[styles.inputRow, {
+                backgroundColor: theme.colors.midnight,
+                borderColor: passwordBorderColor,
+              }]}>
+                <Ionicons name="lock-closed-outline" size={18} color={passwordFocused ? theme.colors.gold : theme.colors.parchment} style={{ marginRight: 10 }} />
+                <TextInput
+                  placeholder="Password"
+                  placeholderTextColor={theme.colors.ash}
+                  style={[theme.typography.body, styles.input, { color: theme.colors.ivory }]}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  onFocus={() => setPasswordFocused(true)}
+                  onBlur={() => setPasswordFocused(false)}
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color={theme.colors.parchment}
+                  />
+                </TouchableOpacity>
+              </Animated.View>
+
+              {/* Sign In Button */}
+              <PressableGoldButton
+                label={loading ? 'Signing In...' : 'Sign In'}
+                onPress={handleLogin}
+                loading={loading}
+                disabled={loading}
+                icon={!loading && <Ionicons name="log-in-outline" size={20} color={theme.colors.ivory} />}
+                style={{ marginTop: 8 }}
+              />
+            </GlassCard>
+          </Animated.View>
+
+          {/* ═══ Social Proof ═══ */}
+          <Animated.View style={[styles.socialProof, { opacity: socialProofPulse }]}>
+            <Ionicons name="people" size={14} color={theme.colors.goldMuted} />
+            <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginLeft: 6 }]}>
+              Join 10,000+ travelers worldwide
+            </Text>
+          </Animated.View>
+
+          {/* ═══ Sign Up Link ═══ */}
+          <View style={styles.signupRow}>
+            <Text style={[theme.typography.body, { color: theme.colors.parchment }]}>
+              Don't have an account?{' '}
+            </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
+              <Text style={[theme.typography.body, { color: theme.colors.gold, fontWeight: '600' }]}>
+                Sign Up
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050b18',
+  container: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
+    paddingBottom: 40,
   },
-  header: {
+  brandSection: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 32,
   },
-  title: {
-    color: '#ffffff',
-    fontSize: 32,
-    fontWeight: '700',
-    marginBottom: 8,
+  logoBg: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    overflow: 'hidden',
   },
-  subtitle: {
-    color: '#b0b4c3',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-
-  inputGroup: {
-    marginBottom: 20,
-  },
-  inputContainer: {
+  taglineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161b2b',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    marginTop: 12,
+    height: 24,
   },
-  input: {
-    flex: 1,
-    color: '#ffffff',
-    fontSize: 16,
-    marginLeft: 12,
-  },
-  errorText: {
-    color: '#ff4444',
-    fontSize: 13,
-    marginTop: 6,
-    marginLeft: 4,
-  },
-
-  strengthBar: {
-    height: 4,
-    backgroundColor: '#1f2740',
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  strengthFill: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
-    borderRadius: 2,
-  },
-  strengthText: {
-    color: '#b0b4c3',
-    fontSize: 12,
-    marginTop: 4,
-  },
-
-  loginButton: {
-    backgroundColor: '#ff7a45',
-    borderRadius: 16,
-    paddingVertical: 16,
+  taglineDots: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+  },
+  taglineDot: {
+    height: 6,
+    borderRadius: 3,
+  },
+  formCard: {
+    padding: 24,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 4,
+    marginBottom: 14,
+  },
+  input: { flex: 1 },
+  socialProof: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 20,
   },
-  loginButtonDisabled: {
-    backgroundColor: '#1f2740',
-  },
-  loginButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-
-  demoInfo: {
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  demoText: {
-    color: '#b0b4c3',
-    fontSize: 13,
-  },
-
-  forgotPassword: {
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  forgotPasswordText: {
-    color: '#ff7a45',
-    fontSize: 14,
-    fontWeight: '600',
+  signupRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 16,
   },
 });
