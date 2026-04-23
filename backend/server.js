@@ -61,7 +61,7 @@ app.use(cors({
       return callback(null, true);
     }
     // Also allow any Expo dev client
-    if (origin.startsWith('exp://') || origin.startsWith('http://192.168.')) {
+    if (origin.startsWith('exp://') || origin.startsWith('http://192.168.') || origin.startsWith('http://10.')) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));

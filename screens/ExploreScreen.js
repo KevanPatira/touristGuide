@@ -16,8 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { INDIA_STATES } from '../data/indiaPlaces';
-import { destinationService } from '../services/destination.service';
+import { INDIA_STATES, INDIA_PLACES } from '../data/indiaPlaces';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import useNotifications from '../hooks/useNotifications';
@@ -443,27 +442,27 @@ export default function ExploreScreen() {
       ).slice(0, 5)
     : [];
 
-  // Fetch places
+  // Filter places from local dataset (instant, offline, has lat/lng)
   useEffect(() => {
-    const fetchPlaces = async () => {
-      if (!selectedState) {
-        setPlaces([]);
-        return;
+    if (!selectedState) {
+      setPlaces([]);
+      return;
+    }
+    setLoading(true);
+    // Small delay to show loading skeleton for polish
+    const timer = setTimeout(() => {
+      let filtered = INDIA_PLACES.filter(
+        (p) => p.state.toLowerCase() === selectedState.toLowerCase()
+      );
+      if (activeFilter !== 'All') {
+        filtered = filtered.filter((p) => p.category === activeFilter);
       }
-      setLoading(true);
-      try {
-        const params = { state: selectedState };
-        if (activeFilter !== 'All') params.category = activeFilter;
-        params.limit = 50;
-        const response = await destinationService.getDestinations(params);
-        setPlaces(response.data.destinations || []);
-      } catch (error) {
-        console.error('Error fetching destinations:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPlaces();
+      // Already ranked in data — sort by rank just in case
+      filtered.sort((a, b) => a.rank - b.rank);
+      setPlaces(filtered.slice(0, 10));
+      setLoading(false);
+    }, 350);
+    return () => clearTimeout(timer);
   }, [selectedState, activeFilter]);
 
   const handleSearchChange = (text) => {
@@ -496,7 +495,14 @@ export default function ExploreScreen() {
   };
 
   const handlePlaceTap = (place) => {
-    navigation.navigate('PlaceDetail', { place });
+    // Navigate to SmartNavigation with destination coordinates
+    navigation.navigate('SmartNavigation', {
+      destinationName: place.name,
+      destinationLat: place.lat,
+      destinationLng: place.lng,
+      destinationCity: place.city,
+      destinationState: place.state,
+    });
   };
 
   // ─────────────────────────────────────────────

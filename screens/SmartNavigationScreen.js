@@ -56,6 +56,17 @@ export default function SmartNavigationScreen({ route }) {
 
   const incomingPlace = route?.params?.highlightPlace;
 
+  // Incoming destination from Explore screen
+  const exploreDestName  = route?.params?.destinationName;
+  const exploreDestLat   = route?.params?.destinationLat;
+  const exploreDestLng   = route?.params?.destinationLng;
+  const exploreDestCity  = route?.params?.destinationCity;
+  const exploreDestState = route?.params?.destinationState;
+  const hasExploreDest   = exploreDestName && exploreDestLat && exploreDestLng;
+
+  // Track whether we've already auto-navigated from Explore params
+  const exploreHandled = useRef(false);
+
   useEffect(() => { loadLocation(); loadRecent(); }, []);
 
   useEffect(() => {
@@ -71,6 +82,23 @@ export default function SmartNavigationScreen({ route }) {
       }, 800);
     }
   }, [incomingPlace]);
+
+  // Auto-select destination when arriving from Explore screen
+  useEffect(() => {
+    if (hasExploreDest && userLocation && !exploreHandled.current) {
+      exploreHandled.current = true;
+      const place = {
+        place_id: `explore-${exploreDestLat}-${exploreDestLng}`,
+        name: exploreDestName,
+        area: [exploreDestCity, exploreDestState].filter(Boolean).join(', '),
+        lat: exploreDestLat,
+        lng: exploreDestLng,
+        fullName: [exploreDestName, exploreDestCity, exploreDestState].filter(Boolean).join(', '),
+      };
+      // Short delay so the map has time to render
+      setTimeout(() => selectPlace(place), 600);
+    }
+  }, [hasExploreDest, userLocation]);
 
   // ── Location ──────────────────────────────────────────────
   const loadLocation = async () => {
