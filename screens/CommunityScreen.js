@@ -1,78 +1,54 @@
-// screens/CommunityScreen.js — Global real-time social feed
+// screens/CommunityScreen.js — Instagram/Facebook-style social feed
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  FlatList, Image, Share, KeyboardAvoidingView, Platform,
-  Alert, ActivityIndicator, RefreshControl, Modal, Animated,
+  FlatList, Image, KeyboardAvoidingView, Platform,
+  Alert, ActivityIndicator, RefreshControl, Modal, Dimensions, Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import {
-  collection, query, orderBy, limit, onSnapshot,
-  addDoc, doc, updateDoc, arrayUnion, arrayRemove,
-  serverTimestamp, startAfter, getDocs, deleteDoc, setDoc,
-  increment as firestoreIncrement,
-} from 'firebase/firestore';
-import { db } from '../constants/firebaseConfig';
 import { useAuth } from '../constants/AuthContext';
 import { useTheme } from '../constants/ThemeContext';
 import useNotifications from '../hooks/useNotifications';
+import usePosts from '../hooks/usePosts';
 
-import GlassCard from '../components/ui/GlassCard';
-import PressableGoldButton from '../components/ui/PressableGoldButton';
-import StaggerRevealText from '../components/ui/StaggerRevealText';
 import FloatingParticles from '../components/ui/FloatingParticles';
-
-const POSTS_PER_PAGE = 15;
-
 import PostCard from '../components/ui/PostCard';
 
-// ═══════════════════════════════════════
-// Main Community Screen
-// ═══════════════════════════════════════
-const tabs = ['Recent', 'Popular', 'Following'];
+const { width: SCREEN_W } = Dimensions.get('window');
+const tabs = ['Recent', 'Popular'];
 
 export default function CommunityScreen({ navigation }) {
   const { theme } = useTheme();
   const { user, userProfile } = useAuth();
 
   const [activeTab, setActiveTab] = useState('Recent');
+  const [showComposer, setShowComposer] = useState(false);
   const [text, setText] = useState('');
   const [imageUri, setImageUri] = useState(null);
-  const [posts, setPosts] = useState([]);
-  const [postLocation, setPostLocation] = useState('My Location');
+  const [postLocation, setPostLocation] = useState('');
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
 
   const { unreadCount } = useNotifications(user?.uid);
+  const {
+    posts, loading, refreshing, hasMore,
+    fetchPosts, loadMore, onRefresh,
+    createPost, likePost, unlikePost,
+  } = usePosts();
 
-  // ═══ Real-time feed subscription ═══
+  // FAB animation
+  const fabScale = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    let q;
-    const postsRef = collection(db, 'posts');
+    Animated.spring(fabScale, { toValue: 1, delay: 600, speed: 10, bounciness: 12, useNativeDriver: true }).start();
+  }, []);
 
-    if (activeTab === 'Popular') {
-      q = query(postsRef, orderBy('likes', 'desc'), limit(POSTS_PER_PAGE));
-    } else {
-      q = query(postsRef, orderBy('createdAt', 'desc'), limit(POSTS_PER_PAGE));
-    }
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setPosts(data);
-      setInitialLoading(false);
-      setRefreshing(false);
-    }, (error) => {
-      console.log('Feed error:', error);
-      setInitialLoading(false);
-      setRefreshing(false);
-    });
-
-    return unsubscribe;
-  }, [activeTab]);
+  // ═══ Fetch posts when tab changes ═══
+  useEffect(() => {
+    const sort = activeTab === 'Popular' ? 'popular' : 'recent';
+    fetchPosts(sort);
+  }, [activeTab, fetchPosts]);
 
   // ═══ Image Picker ═══
   const pickImage = async () => {
@@ -110,13 +86,7 @@ export default function CommunityScreen({ navigation }) {
     setIsFetchingLocation(false);
   };
 
-  // ═══ Image upload disabled (Storage requires Blaze plan) ═══
-  const uploadImage = async (uri) => {
-    // Return the local URI as-is since Firebase Storage is not available
-    return uri;
-  };
-
-  // ═══ Create Post ═══
+  // ═══ Create Post (MongoDB) ═══
   const handlePost = async () => {
     if (!text.trim() && !imageUri) return;
     if (!user) {
@@ -126,52 +96,14 @@ export default function CommunityScreen({ navigation }) {
 
     setIsPosting(true);
     try {
-      let imageUrl = null;
-      if (imageUri) {
-        imageUrl = await uploadImage(imageUri);
-      }
+      const imageUrl = imageUri || null;
+      await createPost(text.trim(), imageUrl, postLocation || 'Earth');
 
-      const postDocRef = await addDoc(collection(db, 'posts'), {
-        authorId: user.uid,
-        authorName: userProfile?.displayName || user.displayName || 'Traveler',
-        authorAvatar: userProfile?.avatarUrl || '',
-        text: text.trim(),
-        imageUrl,
-        location: postLocation,
-        likes: 0,
-        likesBy: [],
-        commentsCount: 0,
-        createdAt: serverTimestamp(),
-      });
-
-      // Increment user's post count
-      await updateDoc(doc(db, 'users', user.uid), {
-        postCount: firestoreIncrement(1),
-      });
-
-      // Notify all followers about new post
-      try {
-        const followersQuery = query(collection(db, 'follows'), where('followingId', '==', user.uid), where('status', '==', 'accepted'));
-        const followersSnap = await getDocs(followersQuery);
-        followersSnap.forEach(async (docSnap) => {
-          const followerId = docSnap.data().followerId;
-          await setDoc(doc(db, 'notifications', `post_${postDocRef.id}_${followerId}`), {
-            recipientId: followerId,
-            type: 'new_post',
-            fromUserId: user.uid,
-            postId: postDocRef.id,
-            read: false,
-            createdAt: serverTimestamp(),
-          });
-        });
-      } catch (e) {
-        console.log('Follower notification error:', e);
-      }
-
-      // Reset
+      // Reset & close
       setText('');
       setImageUri(null);
-      setPostLocation('My Location');
+      setPostLocation('');
+      setShowComposer(false);
     } catch (e) {
       Alert.alert('Error', 'Could not create post. Please try again.');
       console.log('Post error:', e);
@@ -181,157 +113,93 @@ export default function CommunityScreen({ navigation }) {
 
   // ═══ Navigate to user profile ═══
   const handleAuthorPress = (authorId) => {
-    if (authorId === user?.uid) return; // Don't navigate to own profile
+    if (!authorId || authorId === user?.uid) return;
     navigation.navigate('UserProfile', { userId: authorId });
   };
 
-  // ═══ Refresh ═══
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    // The onSnapshot will handle the refresh
-  }, []);
-
-  const displayName = userProfile?.displayName || user?.displayName || 'You';
+  const displayName = userProfile?.displayName || userProfile?.name || user?.displayName || 'You';
   const initials = displayName[0]?.toUpperCase() || '?';
 
   const renderPost = ({ item }) => (
-    <PostCard post={item} onAuthorPress={handleAuthorPress} />
+    <PostCard
+      post={item}
+      onAuthorPress={handleAuthorPress}
+      onLike={likePost}
+      onUnlike={unlikePost}
+    />
+  );
+
+  // ═══ Stories-style top bar (compact) ═══
+  const renderHeader = () => (
+    <View style={{ paddingBottom: 4 }}>
+      {/* Instagram-style tab pills */}
+      <View style={styles.tabRow}>
+        {tabs.map((t) => {
+          const isActive = activeTab === t;
+          return (
+            <TouchableOpacity
+              key={t}
+              style={[
+                styles.tabPill,
+                isActive
+                  ? { backgroundColor: theme.colors.gold }
+                  : { backgroundColor: theme.colors.midnight, borderWidth: 1, borderColor: theme.colors.borderSilver },
+              ]}
+              onPress={() => setActiveTab(t)}
+            >
+              <Ionicons
+                name={t === 'Recent' ? 'time-outline' : 'flame-outline'}
+                size={14}
+                color={isActive ? theme.colors.obsidian : theme.colors.gold}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={[theme.typography.label, {
+                color: isActive ? theme.colors.obsidian : theme.colors.gold,
+                fontSize: 12,
+              }]}>
+                {t}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
   );
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.colors.obsidian }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <FloatingParticles count={10} />
+    <View style={[styles.container, { backgroundColor: theme.colors.obsidian }]}>
+      <FloatingParticles count={6} />
 
-      {/* Header */}
-      <View style={[styles.headerArea, { backgroundColor: theme.colors.midnight }]}>
-        <View style={styles.headerRow}>
-          <View>
-            <StaggerRevealText text="Community" style={[theme.typography.displayS, { color: theme.colors.gold }]} />
-            <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 4 }]}>
-              Share tips with travelers worldwide
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity
-              style={[styles.chatIconBtn, { backgroundColor: theme.colors.obsidian }]}
-              onPress={() => navigation.navigate('Discover')}
-            >
-              <Ionicons name="search" size={20} color={theme.colors.gold} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.chatIconBtn, { backgroundColor: theme.colors.obsidian }]}
-              onPress={() => navigation.navigate('Notifications')}
-            >
-              <Ionicons name="notifications-outline" size={22} color={theme.colors.gold} />
-              {unreadCount > 0 && (
-                <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.chatIconBtn, { backgroundColor: theme.colors.obsidian }]}
-              onPress={() => navigation.navigate('ChatList')}
-            >
-              <Ionicons name="chatbubbles-outline" size={22} color={theme.colors.gold} />
-            </TouchableOpacity>
-          </View>
-        </View>
+      {/* ═══ Instagram-style Top Bar ═══ */}
+      <View style={[styles.topBar, { backgroundColor: theme.colors.midnight }]}>
+        <TouchableOpacity
+          style={styles.topLeftIcon}
+          onPress={() => setShowComposer(true)}
+        >
+          <Ionicons name="add" size={28} color={theme.colors.ivory} />
+        </TouchableOpacity>
 
-        {/* Input box */}
-        <GlassCard style={styles.inputContainer} glowOnPress={false}>
-          <View style={styles.inputRow}>
-            <View style={[styles.smallAvatar, { backgroundColor: theme.colors.copper + '44' }]}>
-              {userProfile?.avatarUrl ? (
-                <Image source={{ uri: userProfile.avatarUrl }} style={styles.smallAvatarImg} />
-              ) : (
-                <Text style={{ color: theme.colors.copper, fontSize: 14, fontWeight: 'bold' }}>
-                  {initials}
-                </Text>
-              )}
-            </View>
-            <TextInput
-              placeholder="Share a travel tip or photo..."
-              placeholderTextColor={theme.colors.parchment}
-              style={[theme.typography.body, styles.input, { color: theme.colors.ivory }]}
-              value={text}
-              onChangeText={setText}
-              multiline
-            />
-          </View>
+        <Text style={[theme.typography.headingM, { color: theme.colors.gold, fontFamily: 'PlayfairDisplay_700Bold', flex: 1, textAlign: 'center' }]}>
+          Community
+        </Text>
 
-          {imageUri && (
-            <View style={styles.imagePreviewContainer}>
-              <Image source={{ uri: imageUri }} style={styles.imagePreview} />
-              <TouchableOpacity style={styles.removeImageBtn} onPress={() => setImageUri(null)}>
-                <Ionicons name="close-circle" size={24} color={theme.colors.crimson} />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <View style={[styles.inputToolbar, { borderTopColor: theme.colors.borderSilver }]}>
-            <TouchableOpacity style={styles.iconButton} onPress={pickImage}>
-              <Ionicons name="image-outline" size={22} color={theme.colors.gold} />
-            </TouchableOpacity>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity style={styles.iconButton} onPress={handleGetLocation}>
-                <Ionicons
-                  name="location-outline"
-                  size={22}
-                  color={postLocation !== 'My Location' ? theme.colors.emerald : theme.colors.gold}
-                />
-              </TouchableOpacity>
-              {isFetchingLocation ? (
-                <ActivityIndicator size="small" color={theme.colors.gold} />
-              ) : postLocation !== 'My Location' ? (
-                <Text
-                  style={[theme.typography.caption, { color: theme.colors.emerald, marginRight: 8, maxWidth: 100 }]}
-                  numberOfLines={1}
-                >
-                  {postLocation}
-                </Text>
-              ) : null}
-            </View>
-
-            <PressableGoldButton
-              label={isPosting ? '...' : 'Post'}
-              onPress={handlePost}
-              disabled={(!text.trim() && !imageUri) || isPosting}
-              loading={isPosting}
-              style={{ marginLeft: 'auto', paddingVertical: 8, paddingHorizontal: 16, minHeight: 0 }}
-            />
-          </View>
-        </GlassCard>
-
-        {/* Tabs */}
-        <View style={styles.tabRow}>
-          {tabs.map((t) => {
-            const isActive = activeTab === t;
-            return (
-              <TouchableOpacity
-                key={t}
-                style={[
-                  styles.tabChip,
-                  { borderColor: theme.colors.goldMuted },
-                  isActive && { backgroundColor: theme.colors.gold }
-                ]}
-                onPress={() => setActiveTab(t)}
-              >
-                <Text style={[theme.typography.label, { color: isActive ? theme.colors.obsidian : theme.colors.gold }]}>
-                  {t}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.topRightIcons}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => navigation.navigate('Notifications')}
+          >
+            <Ionicons name="notifications-outline" size={26} color={theme.colors.ivory} />
+            {unreadCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Feed */}
-      {initialLoading ? (
+      {/* ═══ Feed ═══ */}
+      {loading && posts.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.gold} />
           <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 12 }]}>
@@ -347,14 +215,24 @@ export default function CommunityScreen({ navigation }) {
           <Text style={[theme.typography.body, { color: theme.colors.ash, textAlign: 'center', marginTop: 6 }]}>
             Be the first to share a travel experience!
           </Text>
+          <TouchableOpacity
+            style={[styles.emptyPostBtn, { borderColor: theme.colors.gold }]}
+            onPress={() => setShowComposer(true)}
+          >
+            <Ionicons name="add" size={18} color={theme.colors.gold} />
+            <Text style={[theme.typography.label, { color: theme.colors.gold, marginLeft: 6 }]}>Create Post</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
           data={posts}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item._id || item.id}
           renderItem={renderPost}
-          contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+          ListHeaderComponent={renderHeader}
+          contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 180 }}
           showsVerticalScrollIndicator={false}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.3}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -365,120 +243,304 @@ export default function CommunityScreen({ navigation }) {
           }
         />
       )}
-    </KeyboardAvoidingView>
+
+      {/* ═══ Sub Taskbar ═══ */}
+      <View style={[styles.subTaskbar, { backgroundColor: theme.colors.midnight, borderTopColor: theme.colors.borderSilver }]}>
+        <TouchableOpacity style={styles.subTaskbarIcon}>
+          <Ionicons name="home" size={26} color={theme.colors.ivory} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.subTaskbarIcon} onPress={() => navigation.navigate('Discover')}>
+          <Ionicons name="search" size={26} color={theme.colors.ivory} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.subTaskbarIcon}>
+          <Ionicons name="play-circle-outline" size={28} color={theme.colors.ivory} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.subTaskbarIcon} onPress={() => navigation.navigate('ChatList')}>
+          <Ionicons name="paper-plane-outline" size={26} color={theme.colors.ivory} />
+        </TouchableOpacity>
+      </View>
+
+      {/* ═══ Composer Modal (Instagram-style) ═══ */}
+      <Modal visible={showComposer} animationType="slide" transparent>
+        <KeyboardAvoidingView
+          style={styles.composerOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setShowComposer(false)}
+          />
+          <View style={[styles.composerSheet, { backgroundColor: theme.colors.midnight }]}>
+            {/* Handle bar */}
+            <View style={[styles.sheetHandle, { backgroundColor: theme.colors.borderSilver }]} />
+
+            {/* Header */}
+            <View style={styles.composerHeader}>
+              <TouchableOpacity onPress={() => setShowComposer(false)}>
+                <Text style={[theme.typography.body, { color: theme.colors.parchment }]}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={[theme.typography.headingS, { color: theme.colors.ivory }]}>New Post</Text>
+              <TouchableOpacity
+                onPress={handlePost}
+                disabled={(!text.trim() && !imageUri) || isPosting}
+              >
+                <View style={[
+                  styles.postButton,
+                  { backgroundColor: (text.trim() || imageUri) && !isPosting ? theme.colors.gold : theme.colors.ash + '44' }
+                ]}>
+                  {isPosting ? (
+                    <ActivityIndicator size="small" color={theme.colors.obsidian} />
+                  ) : (
+                    <Text style={[theme.typography.label, {
+                      color: (text.trim() || imageUri) ? theme.colors.obsidian : theme.colors.ash,
+                      fontSize: 13,
+                    }]}>Post</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* Author row */}
+            <View style={styles.authorRow}>
+              <View style={[styles.composerAvatar, { backgroundColor: theme.colors.copper + '44' }]}>
+                {userProfile?.avatarUrl ? (
+                  <Image source={{ uri: userProfile.avatarUrl }} style={styles.composerAvatarImg} />
+                ) : (
+                  <Text style={{ color: theme.colors.copper, fontSize: 16, fontWeight: 'bold' }}>
+                    {initials}
+                  </Text>
+                )}
+              </View>
+              <View>
+                <Text style={[theme.typography.body, { color: theme.colors.ivory, fontWeight: '600' }]}>
+                  {displayName}
+                </Text>
+                {postLocation ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                    <Ionicons name="location" size={12} color={theme.colors.emerald} />
+                    <Text style={[theme.typography.caption, { color: theme.colors.emerald, marginLeft: 4, fontSize: 11 }]}>
+                      {postLocation}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Text input */}
+            <TextInput
+              placeholder="What's on your mind? Share a travel tip..."
+              placeholderTextColor={theme.colors.ash}
+              style={[theme.typography.body, styles.composerInput, { color: theme.colors.ivory }]}
+              value={text}
+              onChangeText={setText}
+              multiline
+              autoFocus
+            />
+
+            {/* Image preview */}
+            {imageUri && (
+              <View style={styles.composerImageWrap}>
+                <Image source={{ uri: imageUri }} style={styles.composerImage} />
+                <TouchableOpacity
+                  style={styles.removeImageBtn}
+                  onPress={() => setImageUri(null)}
+                >
+                  <Ionicons name="close-circle" size={28} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Toolbar */}
+            <View style={[styles.composerToolbar, { borderTopColor: theme.colors.borderSilver }]}>
+              <TouchableOpacity style={styles.toolbarBtn} onPress={pickImage}>
+                <Ionicons name="image-outline" size={24} color={theme.colors.gold} />
+                <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginLeft: 6, fontSize: 11 }]}>Photo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.toolbarBtn} onPress={handleGetLocation}>
+                {isFetchingLocation ? (
+                  <ActivityIndicator size="small" color={theme.colors.gold} />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="location-outline"
+                      size={24}
+                      color={postLocation ? theme.colors.emerald : theme.colors.gold}
+                    />
+                    <Text style={[theme.typography.caption, {
+                      color: postLocation ? theme.colors.emerald : theme.colors.parchment,
+                      marginLeft: 6, fontSize: 11,
+                    }]}>
+                      {postLocation || 'Location'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  headerArea: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    zIndex: 10,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-  },
-  headerRow: {
+
+  // ── Instagram-style top bar ──
+  topBar: {
+    paddingTop: 54,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
-  chatIconBtn: {
-    width: 38, height: 38,
-    borderRadius: 19,
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)'
+  topLeftIcon: {
+    padding: 4,
+    width: 40,
   },
-  unreadBadge: {
+  topRightIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 40,
+    justifyContent: 'flex-end',
+  },
+  iconButton: {
+    padding: 4,
+  },
+  badge: {
     position: 'absolute',
     top: -4, right: -4,
     backgroundColor: '#FF3B30',
     minWidth: 18, height: 18, borderRadius: 9,
     justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
   },
-  unreadBadgeText: {
-    color: '#FFF', fontSize: 10, fontWeight: 'bold'
-  },
-  inputContainer: {
-    marginTop: 20,
-    padding: 16,
-    borderRadius: 20,
-  },
-  inputRow: {
+  badgeText: { color: '#FFF', fontSize: 9, fontWeight: 'bold' },
+
+  // ── Tab pills ──
+  tabRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 40,
-  },
-  smallAvatar: {
-    width: 32, height: 32, borderRadius: 16,
-    justifyContent: 'center', alignItems: 'center',
-    marginRight: 12, overflow: 'hidden',
-  },
-  smallAvatarImg: { width: 32, height: 32, borderRadius: 16 },
-  input: { flex: 1, maxHeight: 100, alignSelf: 'flex-start' },
-  inputToolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-    borderTopWidth: 1,
-    paddingTop: 16,
-  },
-  iconButton: { marginRight: 16 },
-  imagePreviewContainer: {
-    marginTop: 12,
-    position: 'relative',
-    alignSelf: 'flex-start',
-  },
-  imagePreview: { width: 200, height: 150, borderRadius: 12 },
-  removeImageBtn: {
-    position: 'absolute',
-    top: -8, right: -8,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-  },
-  tabRow: { flexDirection: 'row', marginTop: 20 },
-  tabChip: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingTop: 12,
+    gap: 8,
+  },
+  tabPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 20,
-    marginRight: 8,
+  },
+  
+  // ── Sub Taskbar ──
+  subTaskbar: {
+    position: 'absolute',
+    bottom: 104, // Just above the global taskbar (which is at bottom: 28 + height: 68 = 96)
+    left: 16,
+    right: 16,
+    height: 56,
+    borderRadius: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
     borderWidth: 1,
+    // Glass shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
   },
-  postCard: { padding: 16, marginBottom: 16 },
-  postHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+  subTaskbarIcon: {
+    padding: 8,
   },
-  postHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  // ── Composer Modal (bottom sheet) ──
+  composerOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
-  avatar: {
-    width: 40, height: 40, borderRadius: 20,
-    marginRight: 12,
-    justifyContent: 'center', alignItems: 'center',
-    overflow: 'hidden',
+  composerSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    maxHeight: '80%',
   },
-  avatarImg: { width: 40, height: 40, borderRadius: 20 },
-  postBody: { marginBottom: 16 },
-  postImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    marginTop: 12,
+  sheetHandle: {
+    width: 40, height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 16,
   },
-  postActions: {
+  composerHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderTopWidth: 1,
-    paddingTop: 12,
+    marginBottom: 20,
   },
-  statChip: { flexDirection: 'row', alignItems: 'center' },
+  postButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  authorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  composerAvatar: {
+    width: 42, height: 42, borderRadius: 21,
+    justifyContent: 'center', alignItems: 'center',
+    overflow: 'hidden',
+  },
+  composerAvatarImg: { width: 42, height: 42, borderRadius: 21 },
+  composerInput: {
+    minHeight: 80,
+    maxHeight: 160,
+    fontSize: 16,
+    textAlignVertical: 'top',
+    marginBottom: 12,
+  },
+  composerImageWrap: {
+    position: 'relative',
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  composerImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 16,
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: 8, right: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 16,
+  },
+  composerToolbar: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    paddingTop: 14,
+    gap: 24,
+  },
+  toolbarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  // ── Empty / Loading ──
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -490,49 +552,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 40,
   },
-  // Comment Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    height: '65%',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 16,
-  },
-  modalHeader: {
+  emptyPostBtn: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-  },
-  emptyComments: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-  },
-  commentItem: {
-    flexDirection: 'row',
+    marginTop: 20,
     paddingHorizontal: 20,
     paddingVertical: 10,
-    gap: 10,
+    borderRadius: 20,
+    borderWidth: 1,
   },
-  commentAvatar: {
-    width: 30, height: 30, borderRadius: 15,
-    justifyContent: 'center', alignItems: 'center',
-    overflow: 'hidden',
-  },
-  commentAvatarImg: { width: 30, height: 30, borderRadius: 15 },
-  commentInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-  },
-  commentInput: { flex: 1, marginRight: 10 },
 });

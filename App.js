@@ -1,9 +1,9 @@
 
 // App.js
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useFonts, PlayfairDisplay_700Bold, PlayfairDisplay_600SemiBold, PlayfairDisplay_500Medium } from '@expo-google-fonts/playfair-display';
@@ -31,8 +31,10 @@ import ChatScreen from './screens/ChatScreen';
 import NotificationsScreen from './screens/NotificationsScreen';
 import DiscoverScreen from './screens/DiscoverScreen';
 import SavedPostsScreen from './screens/SavedPostsScreen';
+import AIChatScreen from './screens/AIChatScreen';
 
 import SplashScreen from './screens/SplashScreen';
+import FloatingAIChat from './components/ui/FloatingAIChat';
 
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -94,22 +96,65 @@ function MainTabs() {
         tabBarShowLabel: true,
         tabBarActiveTintColor: theme.colors.gold,
         tabBarInactiveTintColor: theme.colors.ash,
-        tabBarLabelStyle: theme.typography.caption,
+        tabBarLabelStyle: {
+          ...theme.typography.caption,
+          fontSize: 10,
+          marginTop: -2,
+          marginBottom: 4,
+        },
         tabBarStyle: {
-          backgroundColor: theme.colors.deepNavy,
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
           borderTopWidth: 1,
-          borderTopColor: theme.colors.borderSilver,
-          elevation: 0,
+          borderTopColor: 'rgba(201, 168, 76, 0.15)',
+          elevation: 20,
+          position: 'absolute',
+          bottom: 28,
+          left: 16,
+          right: 16,
+          borderRadius: 24,
+          height: 68,
+          paddingBottom: 8,
+          paddingTop: 8,
+          // Glass shadow
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 16,
+        },
+        tabBarItemStyle: {
+          borderRadius: 16,
+          marginHorizontal: 4,
         },
         tabBarButton: (props) => <CustomTabBarButton {...props} />,
-        tabBarIcon: ({ color, size }) => {
+        tabBarIcon: ({ color, size, focused }) => {
           let iconName = 'home';
-          if (route.name === 'Home') iconName = 'compass';
-          else if (route.name === 'Explore') iconName = 'map';
-          else if (route.name === 'Community') iconName = 'globe';
-          else if (route.name === 'Profile') iconName = 'person';
+          if (route.name === 'Home') iconName = focused ? 'compass' : 'compass-outline';
+          else if (route.name === 'Explore') iconName = focused ? 'map' : 'map-outline';
+          else if (route.name === 'Community') iconName = focused ? 'globe' : 'globe-outline';
+          else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return (
+            <View style={{ alignItems: 'center' }}>
+              {focused && (
+                <View style={{
+                  width: 4,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: theme.colors.gold,
+                  marginBottom: 4,
+                  shadowColor: theme.colors.gold,
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.8,
+                  shadowRadius: 4,
+                }} />
+              )}
+              <Ionicons
+                name={iconName}
+                size={focused ? 24 : 22}
+                color={color}
+              />
+            </View>
+          );
         },
       })}
     >
@@ -125,6 +170,8 @@ function AppContent() {
   const { theme } = useTheme();
   const { user, loading } = useAuth();
   const [splashFinished, setSplashFinished] = useState(false);
+  const navigationRef = useRef();
+  const [activeRouteName, setActiveRouteName] = useState('');
 
   let [fontsLoaded] = useFonts({
     PlayfairDisplay_700Bold,
@@ -150,7 +197,15 @@ function AppContent() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.obsidian }}>
       <OfflineBanner />
-      <NavigationContainer>
+      <NavigationContainer
+        ref={navigationRef}
+        onReady={() => {
+          setActiveRouteName(navigationRef.current?.getCurrentRoute()?.name || '');
+        }}
+        onStateChange={() => {
+          setActiveRouteName(navigationRef.current?.getCurrentRoute()?.name || '');
+        }}
+      >
         <StatusBar style="light" />
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {user ? (
@@ -163,6 +218,7 @@ function AppContent() {
               <Stack.Screen name="Notifications" component={NotificationsScreen} />
               <Stack.Screen name="Discover" component={DiscoverScreen} />
               <Stack.Screen name="SavedPosts" component={SavedPostsScreen} />
+              <Stack.Screen name="AIChat" component={AIChatScreen} />
             </>
           ) : (
             <>
@@ -171,6 +227,9 @@ function AppContent() {
             </>
           )}
         </Stack.Navigator>
+        
+        {/* Floating AI Chat — available on all screens except the chat itself */}
+        {user && activeRouteName !== 'AIChat' && <FloatingAIChat />}
       </NavigationContainer>
     </View>
   );

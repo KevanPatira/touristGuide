@@ -1,72 +1,64 @@
-// hooks/useNotifications.js — Retrieve and manage real-time notifications
-import { useState, useEffect } from 'react';
-import {
-  collection, query, where, orderBy, limit, onSnapshot,
-  doc, updateDoc,
-} from 'firebase/firestore';
-import { db } from '../constants/firebaseConfig';
+// hooks/useNotifications.js — Notifications backed by MongoDB API (polling)
+import { useState, useEffect, useCallback, useRef } from 'react';
+import * as notifService from '../services/notification.service';
+
+const POLL_INTERVAL = 30000; // 30 seconds
 
 export default function useNotifications(userId) {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const intervalRef = useRef(null);
 
+  const fetchNotifications = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const res = await notifService.getNotifications(1, 50);
+      setNotifications(res.data || []);
+      setUnreadCount(res.unreadCount || 0);
+    } catch (e) {
+      console.log('[useNotifications] Fetch failed:', e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  // Initial fetch + polling
   useEffect(() => {
     if (!userId) {
       setLoading(false);
       return;
     }
 
-    const notifRef = collection(db, 'notifications');
-    const q = query(
-      notifRef,
-      where('recipientId', '==', userId),
-      // Notice: Removed orderBy('createdAt', 'desc') to prevent Firebase composite index errors.
-      // We will sort the results locally instead.
-      limit(50)
-    );
+    fetchNotifications();
+    intervalRef.current = setInterval(fetchNotifications, POLL_INTERVAL);
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const notifs = [];
-      let unread = 0;
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [userId, fetchNotifications]);
 
-      snapshot.docs.forEach(docSnap => {
-        const data = docSnap.data();
-        notifs.push({ id: docSnap.id, ...data });
-        if (!data.read) {
-          unread += 1;
-        }
-      });
-
-      // Sort notifications locally (Descending)
-      notifs.sort((a, b) => {
-        const tA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-        const tB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-        return tB - tA;
-      });
-
-      setNotifications(notifs);
-      setUnreadCount(unread);
-      setLoading(false);
-    });
-
-    return unsub;
-  }, [userId]);
-
-  const markAsRead = async (notifId) => {
+  const markAsRead = useCallback(async (notifId) => {
     try {
-      await updateDoc(doc(db, 'notifications', notifId), { read: true });
+      await notifService.markAsRead(notifId);
+      setNotifications(prev =>
+        prev.map(n => n.id === notifId || n._id === notifId ? { ...n, read: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (_) {}
-  };
+  }, []);
 
-  const markAllAsRead = async () => {
+  const markAllAsRead = useCallback(async () => {
     try {
-      const unreadNotifs = notifications.filter(n => !n.read);
-      for (const n of unreadNotifs) {
-        await updateDoc(doc(db, 'notifications', n.id), { read: true });
-      }
+      await notifService.markAllAsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
     } catch (_) {}
-  };
+  }, []);
 
-  return { notifications, unreadCount, loading, markAsRead, markAllAsRead };
+  const refresh = useCallback(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  return { notifications, unreadCount, loading, markAsRead, markAllAsRead, refresh };
 }

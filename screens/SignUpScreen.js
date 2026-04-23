@@ -1,4 +1,4 @@
-// screens/SignUpScreen.js — New Account Registration
+// screens/SignUpScreen.js — New Account Registration via Express API
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
@@ -49,12 +49,15 @@ export default function SignUpScreen({ navigation }) {
     setLoading(true);
     try {
       await signUp(email.trim(), password, username.trim());
-      // Auth state listener in AuthContext will handle navigation
+      // AuthContext state change will handle navigation
     } catch (error) {
       let msg = 'Could not create account. Please try again.';
-      if (error.code === 'auth/email-already-in-use') msg = 'An account with this email already exists.';
-      else if (error.code === 'auth/invalid-email') msg = 'Invalid email address.';
-      else if (error.code === 'auth/weak-password') msg = 'Password is too weak.';
+      if (error.response?.status === 400) {
+        if (error.response.data?.message) msg = error.response.data.message;
+        else if (error.response.data?.errors) msg = error.response.data.errors.map(e => e.msg).join('\n');
+      } else if (error.response?.status === 429) {
+        msg = 'Too many registration attempts. Please try again later.';
+      }
       Alert.alert('Sign Up Failed', msg);
     }
     setLoading(false);

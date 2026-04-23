@@ -1,170 +1,95 @@
-// hooks/useFollow.js — Follow/Unfollow logic with private account support
-import { useState, useEffect } from 'react';
-import {
-  doc,
-  collection,
-  query,
-  where,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  updateDoc,
-  increment,
-  serverTimestamp,
-  onSnapshot,
-} from 'firebase/firestore';
-import { db } from '../constants/firebaseConfig';
+// hooks/useFollow.js — Follow/unfollow logic backed by MongoDB API
+import { useState, useEffect, useCallback } from 'react';
+import * as followService from '../services/follow.service';
 
 /**
  * Custom hook for follow/unfollow logic.
- * Handles private accounts (pending requests) vs public (instant follow).
+ * All data from MongoDB — no Firebase dependency.
  *
- * @param {string} currentUserId - The logged-in user's UID
+ * @param {string} currentUserId - The logged-in user's _id
  * @param {string} targetUserId - The user being followed/unfollowed
  */
 export default function useFollow(currentUserId, targetUserId) {
   const [followStatus, setFollowStatus] = useState('none'); // 'none' | 'pending' | 'following'
   const [loading, setLoading] = useState(true);
 
+  // Fetch initial follow status
   useEffect(() => {
     if (!currentUserId || !targetUserId || currentUserId === targetUserId) {
       setLoading(false);
       return;
     }
 
-    // Listen for real-time follow status changes
-    const followsRef = collection(db, 'follows');
-    const q = query(
-      followsRef,
-      where('followerId', '==', currentUserId),
-      where('followingId', '==', targetUserId)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (snapshot.empty) {
-        setFollowStatus('none');
-      } else {
-        const followDoc = snapshot.docs[0].data();
-        setFollowStatus(followDoc.status); // 'pending' or 'accepted'
+    let mounted = true;
+    const fetchStatus = async () => {
+      try {
+        const res = await followService.checkFollowStatus(targetUserId);
+        if (mounted) setFollowStatus(res.status);
+      } catch (e) {
+        console.log('[useFollow] Status check failed:', e.message);
+      } finally {
+        if (mounted) setLoading(false);
       }
-      setLoading(false);
-    });
+    };
 
-    return unsubscribe;
+    fetchStatus();
+    return () => { mounted = false; };
   }, [currentUserId, targetUserId]);
 
   /**
-   * Follow a user.
-   * If target is private → status = 'pending'
-   * If target is public → status = 'accepted' + update counts
+   * Follow a user
    */
-  const followUser = async (isTargetPrivate) => {
+  const followUser = useCallback(async () => {
     if (!currentUserId || !targetUserId) return;
-
-    const followId = `${currentUserId}_${targetUserId}`;
-    const status = isTargetPrivate ? 'pending' : 'accepted';
-
-    await setDoc(doc(db, 'follows', followId), {
-      followerId: currentUserId,
-      followingId: targetUserId,
-      status,
-      createdAt: serverTimestamp(),
-    });
-
-    // For public accounts, update counts immediately
-    if (!isTargetPrivate) {
-      await updateDoc(doc(db, 'users', currentUserId), {
-        followingCount: increment(1),
-      });
-      await updateDoc(doc(db, 'users', targetUserId), {
-        followerCount: increment(1),
-      });
+    try {
+      const res = await followService.followUser(targetUserId);
+      setFollowStatus(res.status === 'accepted' ? 'following' : 'pending');
+    } catch (e) {
+      console.log('[useFollow] Follow failed:', e.message);
+      throw e;
     }
-
-    // Create a notification for the target user
-    const notifId = `follow_${followId}`;
-    await setDoc(doc(db, 'notifications', notifId), {
-      recipientId: targetUserId,
-      type: isTargetPrivate ? 'follow_request' : 'new_follower',
-      fromUserId: currentUserId,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
-
-    setFollowStatus(status === 'accepted' ? 'following' : 'pending');
-  };
+  }, [currentUserId, targetUserId]);
 
   /**
-   * Unfollow a user (or cancel pending request).
+   * Unfollow a user (or cancel pending request)
    */
-  const unfollowUser = async () => {
+  const unfollowUser = useCallback(async () => {
     if (!currentUserId || !targetUserId) return;
-
-    const followId = `${currentUserId}_${targetUserId}`;
-    const followDocRef = doc(db, 'follows', followId);
-
-    // Check current status to determine if we need to decrement counts
-    const wasFollowing = followStatus === 'following' || followStatus === 'accepted';
-
-    await deleteDoc(followDocRef);
-
-    if (wasFollowing) {
-      await updateDoc(doc(db, 'users', currentUserId), {
-        followingCount: increment(-1),
-      });
-      await updateDoc(doc(db, 'users', targetUserId), {
-        followerCount: increment(-1),
-      });
+    try {
+      await followService.unfollowUser(targetUserId);
+      setFollowStatus('none');
+    } catch (e) {
+      console.log('[useFollow] Unfollow failed:', e.message);
+      throw e;
     }
-
-    // Remove the notification
-    try {
-      await deleteDoc(doc(db, 'notifications', `follow_${followId}`));
-    } catch (e) {}
-
-    setFollowStatus('none');
-  };
+  }, [currentUserId, targetUserId]);
 
   /**
-   * Accept a follow request (called by the target user).
+   * Accept a follow request (called by the target user)
    */
-  const acceptFollowRequest = async (requesterId) => {
-    const followId = `${requesterId}_${currentUserId}`;
-    const followDocRef = doc(db, 'follows', followId);
-
-    await updateDoc(followDocRef, { status: 'accepted' });
-
-    // Update counts
-    await updateDoc(doc(db, 'users', requesterId), {
-      followingCount: increment(1),
-    });
-    await updateDoc(doc(db, 'users', currentUserId), {
-      followerCount: increment(1),
-    });
-
-    // Update notification
+  const acceptFollowRequest = useCallback(async (requesterId) => {
     try {
-      await updateDoc(doc(db, 'notifications', `follow_${followId}`), {
-        type: 'follow_accepted',
-        recipientId: requesterId,
-      });
-    } catch (e) {}
-  };
+      await followService.acceptFollow(requesterId);
+    } catch (e) {
+      console.log('[useFollow] Accept failed:', e.message);
+      throw e;
+    }
+  }, []);
 
   /**
-   * Decline a follow request.
+   * Decline a follow request
    */
-  const declineFollowRequest = async (requesterId) => {
-    const followId = `${requesterId}_${currentUserId}`;
-    await deleteDoc(doc(db, 'follows', followId));
-
+  const declineFollowRequest = useCallback(async (requesterId) => {
     try {
-      await deleteDoc(doc(db, 'notifications', `follow_${followId}`));
-    } catch (e) {}
-  };
+      await followService.declineFollow(requesterId);
+    } catch (e) {
+      console.log('[useFollow] Decline failed:', e.message);
+      throw e;
+    }
+  }, []);
 
   return {
-    followStatus: followStatus === 'accepted' ? 'following' : followStatus,
+    followStatus,
     loading,
     followUser,
     unfollowUser,

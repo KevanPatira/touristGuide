@@ -1,17 +1,14 @@
-// components/ui/PostCard.js
-import React, { useState, useEffect, useRef } from 'react';
+// components/ui/PostCard.js — MongoDB-backed PostCard with comments
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
   Share, Animated, Modal, TextInput, FlatList, ActivityIndicator, Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  doc, updateDoc, arrayUnion, arrayRemove,
-  serverTimestamp, setDoc, collection, query, orderBy, onSnapshot, addDoc, increment as firestoreIncrement
-} from 'firebase/firestore';
-import { db } from '../../constants/firebaseConfig';
 import { useAuth } from '../../constants/AuthContext';
 import { useTheme } from '../../constants/ThemeContext';
+import * as commentService from '../../services/comment.service';
+import * as postService from '../../services/post.service';
 import GlassCard from './GlassCard';
 
 function CommentsModal({ visible, onClose, postId, postAuthorId, theme }) {
@@ -20,50 +17,34 @@ function CommentsModal({ visible, onClose, postId, postAuthorId, theme }) {
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(true);
 
+  // Fetch comments from MongoDB
   useEffect(() => {
     if (!visible || !postId) return;
+    let mounted = true;
 
-    const commentsRef = collection(db, 'posts', postId, 'comments');
-    const q = query(commentsRef, orderBy('createdAt', 'asc'));
+    const fetchComments = async () => {
+      try {
+        const res = await commentService.getComments(postId, 1, 50);
+        if (mounted) {
+          setComments(res.data || []);
+          setLoading(false);
+        }
+      } catch (e) {
+        console.log('Fetch comments error:', e.message);
+        if (mounted) setLoading(false);
+      }
+    };
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setComments(data);
-      setLoading(false);
-    });
-
-    return unsub;
+    setLoading(true);
+    fetchComments();
+    return () => { mounted = false; };
   }, [visible, postId]);
 
   const handleAddComment = async () => {
     if (!commentText.trim()) return;
     try {
-      const commentsRef = collection(db, 'posts', postId, 'comments');
-      await addDoc(commentsRef, {
-        authorId: user.uid,
-        authorName: userProfile?.displayName || 'Traveler',
-        authorAvatar: userProfile?.avatarUrl || '',
-        text: commentText.trim(),
-        createdAt: serverTimestamp(),
-      });
-
-      // Increment comment count on post
-      await updateDoc(doc(db, 'posts', postId), {
-        commentsCount: firestoreIncrement(1),
-      });
-
-      // Notify post author
-      if (postAuthorId && postAuthorId !== user.uid) {
-        await setDoc(doc(db, 'notifications', `comment_${postId}_${user.uid}_${Date.now()}`), {
-          recipientId: postAuthorId,
-          type: 'comment',
-          fromUserId: user.uid,
-          postId: postId,
-          read: false,
-          createdAt: serverTimestamp(),
-        });
-      }
-
+      const res = await commentService.addComment(postId, commentText.trim());
+      setComments(prev => [...prev, res.data]);
       setCommentText('');
     } catch (e) {
       Alert.alert('Error', 'Could not add comment.');
@@ -95,7 +76,7 @@ function CommentsModal({ visible, onClose, postId, postAuthorId, theme }) {
           ) : (
             <FlatList
               data={comments}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item) => item.id || item._id}
               style={{ flex: 1 }}
               renderItem={({ item }) => (
                 <View style={styles.commentItem}>
@@ -144,28 +125,26 @@ function CommentsModal({ visible, onClose, postId, postAuthorId, theme }) {
   );
 }
 
-export default function PostCard({ post, onAuthorPress }) {
+export default function PostCard({ post, onAuthorPress, onLike, onUnlike }) {
   const { theme } = useTheme();
-  const { user, userProfile, updateUserProfile } = useAuth();
+  const { user, userProfile } = useAuth();
   const [showComments, setShowComments] = useState(false);
   const heartScale = useRef(new Animated.Value(1)).current;
 
-  const isLiked = post.likesBy?.includes(user?.uid);
+  // Use likedBy array or check against user id
+  const postId = post._id || post.id;
+  const likedByList = post.likedBy || [];
+  const isLiked = likedByList.some(id =>
+    id === user?.uid || id === user?._id || String(id) === String(user?.uid)
+  );
   const likesCount = post.likes || 0;
-  
-  // Checking if this post is saved in user Profile
-  const savedList = userProfile?.savedPosts || [];
-  const isSaved = savedList.includes(post.id);
 
   const toggleLike = async () => {
     if (!user) return;
     try {
-      const postRef = doc(db, 'posts', post.id);
       if (isLiked) {
-        await updateDoc(postRef, {
-          likesBy: arrayRemove(user.uid),
-          likes: firestoreIncrement(-1),
-        });
+        if (onUnlike) onUnlike(postId);
+        else await postService.unlikePost(postId);
       } else {
         // Animate heart
         Animated.sequence([
@@ -173,51 +152,11 @@ export default function PostCard({ post, onAuthorPress }) {
           Animated.spring(heartScale, { toValue: 1, useNativeDriver: true, speed: 50 }),
         ]).start();
 
-        await updateDoc(postRef, {
-          likesBy: arrayUnion(user.uid),
-          likes: firestoreIncrement(1),
-        });
-
-        // Notify post author
-        if (post.authorId !== user.uid) {
-          await setDoc(doc(db, 'notifications', `like_${post.id}_${user.uid}`), {
-            recipientId: post.authorId,
-            type: 'like',
-            fromUserId: user.uid,
-            postId: post.id,
-            read: false,
-            createdAt: serverTimestamp(),
-          });
-        }
+        if (onLike) onLike(postId);
+        else await postService.likePost(postId);
       }
     } catch (e) {
       console.log('Like error:', e);
-    }
-  };
-
-  const toggleSave = async () => {
-    if (!user) return;
-    try {
-      const userRef = doc(db, 'users', user.uid);
-      if (isSaved) {
-        await updateDoc(userRef, {
-          savedPosts: arrayRemove(post.id)
-        });
-        const newList = savedList.filter((id) => id !== post.id);
-        if (updateUserProfile) {
-          updateUserProfile({ savedPosts: newList });
-        }
-      } else {
-        await updateDoc(userRef, {
-          savedPosts: arrayUnion(post.id)
-        });
-        const newList = [...savedList, post.id];
-        if (updateUserProfile) {
-          updateUserProfile({ savedPosts: newList });
-        }
-      }
-    } catch (e) {
-      console.log('Save error:', e);
     }
   };
 
@@ -232,7 +171,7 @@ export default function PostCard({ post, onAuthorPress }) {
   const formatTime = (timestamp) => {
     if (!timestamp) return 'Just now';
     const now = Date.now();
-    const postTime = timestamp.toDate ? timestamp.toDate().getTime() : timestamp;
+    const postTime = timestamp.toDate ? timestamp.toDate().getTime() : new Date(timestamp).getTime();
     const diff = now - postTime;
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'Just now';
@@ -243,6 +182,11 @@ export default function PostCard({ post, onAuthorPress }) {
     return `${days}d ago`;
   };
 
+  // Resolve author fields for both MongoDB-populated and flat post shapes
+  const authorName = post.authorName || post.authorId?.name || 'Traveler';
+  const authorAvatar = post.authorAvatar || post.authorId?.avatar || '';
+  const authorIdStr = post.authorIdStr || post.authorId?._id?.toString() || post.authorId || '';
+
   return (
     <>
       <GlassCard style={styles.postCard} glowOnPress={false}>
@@ -250,21 +194,21 @@ export default function PostCard({ post, onAuthorPress }) {
         <View style={styles.postHeader}>
           <TouchableOpacity
             style={styles.postHeaderLeft}
-            onPress={() => onAuthorPress?.(post.authorId)}
+            onPress={() => onAuthorPress?.(authorIdStr)}
             activeOpacity={0.7}
           >
             <View style={[styles.avatar, { backgroundColor: theme.colors.copper + '44' }]}>
-              {post.authorAvatar ? (
-                <Image source={{ uri: post.authorAvatar }} style={styles.avatarImg} />
+              {authorAvatar ? (
+                <Image source={{ uri: authorAvatar }} style={styles.avatarImg} />
               ) : (
                 <Text style={[theme.typography.headingS, { color: theme.colors.copper }]}>
-                  {(post.authorName || '?')[0].toUpperCase()}
+                  {(authorName || '?')[0].toUpperCase()}
                 </Text>
               )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[theme.typography.label, { color: theme.colors.ivory }]}>
-                {post.authorName || 'Traveler'}
+                {authorName}
               </Text>
               <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 2 }]}>
                 {formatTime(post.createdAt)} • {post.location || 'Somewhere'}
@@ -316,13 +260,6 @@ export default function PostCard({ post, onAuthorPress }) {
             <TouchableOpacity onPress={handleShare}>
               <Ionicons name="share-outline" size={20} color={theme.colors.parchment} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={toggleSave}>
-              <Ionicons
-                name={isSaved ? 'bookmark' : 'bookmark-outline'}
-                size={20}
-                color={isSaved ? theme.colors.gold : theme.colors.parchment}
-              />
-            </TouchableOpacity>
           </View>
         </View>
       </GlassCard>
@@ -330,8 +267,8 @@ export default function PostCard({ post, onAuthorPress }) {
       <CommentsModal
         visible={showComments}
         onClose={() => setShowComments(false)}
-        postId={post.id}
-        postAuthorId={post.authorId}
+        postId={postId}
+        postAuthorId={authorIdStr}
         theme={theme}
       />
     </>

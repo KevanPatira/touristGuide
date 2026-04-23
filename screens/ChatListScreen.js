@@ -1,18 +1,14 @@
-// screens/ChatListScreen.js — List of conversations + start new chat
+// screens/ChatListScreen.js — MongoDB-backed chat list + user search
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
-  Image, TextInput, ActivityIndicator, Alert,
+  Image, TextInput, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  collection, query, where, getDocs, doc, getDoc,
-} from 'firebase/firestore';
-import { db } from '../constants/firebaseConfig';
 import { useAuth } from '../constants/AuthContext';
 import { useTheme } from '../constants/ThemeContext';
 import useChatList from '../hooks/useChatList';
-import { getChatId } from '../hooks/useChat';
+import * as chatService from '../services/chat.service';
 
 import GlassCard from '../components/ui/GlassCard';
 import FloatingParticles from '../components/ui/FloatingParticles';
@@ -27,7 +23,7 @@ export default function ChatListScreen({ navigation }) {
   const [searching, setSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
 
-  // ═══ Search for users to start new chat ═══
+  // ═══ Search for users via MongoDB API ═══
   const handleSearch = async (text) => {
     setSearchQuery(text);
     if (text.trim().length < 2) {
@@ -37,34 +33,28 @@ export default function ChatListScreen({ navigation }) {
 
     setSearching(true);
     try {
-      const usersRef = collection(db, 'users');
-      // Search by username prefix
-      const q = query(
-        usersRef,
-        where('username', '>=', text.toLowerCase()),
-        where('username', '<=', text.toLowerCase() + '\uf8ff')
-      );
-      const snapshot = await getDocs(q);
-      const results = snapshot.docs
-        .map(d => ({ uid: d.id, ...d.data() }))
-        .filter(u => u.uid !== user?.uid);
-      setSearchResults(results);
+      const res = await chatService.searchUsers(text.trim());
+      setSearchResults(res.data || []);
     } catch (_) {}
     setSearching(false);
   };
 
-  // ═══ Open or create chat with a user ═══
+  // ═══ Open or create chat with a user (via MongoDB API) ═══
   const openChatWith = async (otherUser) => {
-    const chatId = getChatId(user.uid, otherUser.uid);
-    setShowSearch(false);
-    setSearchQuery('');
-    setSearchResults([]);
-    navigation.navigate('Chat', {
-      chatId,
-      otherUserId: otherUser.uid,
-      otherUserName: otherUser.displayName || 'Traveler',
-      otherUserAvatar: otherUser.avatarUrl || '',
-    });
+    try {
+      const res = await chatService.createOrGetChat(otherUser.uid);
+      setShowSearch(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      navigation.navigate('Chat', {
+        chatId: res.data.chatId,
+        otherUserId: otherUser.uid,
+        otherUserName: otherUser.displayName || 'Traveler',
+        otherUserAvatar: otherUser.avatarUrl || '',
+      });
+    } catch (e) {
+      console.log('Open chat error:', e);
+    }
   };
 
   // ═══ Format timestamp ═══
@@ -118,9 +108,18 @@ export default function ChatListScreen({ navigation }) {
               {formatTime(item.lastMessageAt)}
             </Text>
           </View>
-          <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 3 }]} numberOfLines={1}>
-            {item.lastMessage || 'Start a conversation...'}
-          </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 3, flex: 1 }]} numberOfLines={1}>
+              {item.lastMessage || 'Start a conversation...'}
+            </Text>
+            {item.unreadCount > 0 && (
+              <View style={[styles.unreadBadge, { backgroundColor: theme.colors.gold }]}>
+                <Text style={{ color: theme.colors.obsidian, fontSize: 10, fontWeight: 'bold' }}>
+                  {item.unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -189,7 +188,7 @@ export default function ChatListScreen({ navigation }) {
           <View style={[styles.searchRow, { backgroundColor: theme.colors.obsidian, borderColor: theme.colors.borderSilver }]}>
             <Ionicons name="search" size={18} color={theme.colors.ash} style={{ marginRight: 8 }} />
             <TextInput
-              placeholder="Search users by username..."
+              placeholder="Search users by name or username..."
               placeholderTextColor={theme.colors.ash}
               style={[theme.typography.body, { flex: 1, color: theme.colors.ivory }]}
               value={searchQuery}
@@ -280,6 +279,11 @@ const styles = StyleSheet.create({
   newChatBadge: {
     width: 32, height: 32, borderRadius: 16,
     justifyContent: 'center', alignItems: 'center',
+  },
+  unreadBadge: {
+    minWidth: 18, height: 18, borderRadius: 9,
+    justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 4, marginLeft: 8,
   },
   centered: {
     flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20,

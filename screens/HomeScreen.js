@@ -1,13 +1,11 @@
 // screens/HomeScreen.js
-import React, { useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Modal,
-  TouchableWithoutFeedback,
   ImageBackground,
   ScrollView,
   Dimensions,
@@ -16,25 +14,55 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../constants/ThemeContext';
+import { useAuth } from '../constants/AuthContext';
+import useNotifications from '../hooks/useNotifications';
 
 import FloatingParticles from '../components/ui/FloatingParticles';
 import GoldShimmerText from '../components/ui/GoldShimmerText';
-import StaggerRevealText from '../components/ui/StaggerRevealText';
 import GlassCard from '../components/ui/GlassCard';
+import AnimatedHeroCard from '../components/ui/AnimatedHeroCard';
+import TypingText from '../components/ui/TypingText';
+import AnimatedCounter from '../components/ui/AnimatedCounter';
+import GradientDivider from '../components/ui/GradientDivider';
+import PulsingDot from '../components/ui/PulsingDot';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-// Data for quick tools
-const tools = [
-  { id: '1', title: 'Image Translator', icon: 'image' },
-  { id: '2', title: 'Voice Translator', icon: 'mic' },
-  { id: '3', title: 'Smart Navigation', icon: 'map' },
-  { id: '4', title: 'Currency Converter', icon: 'cash' },
-  { id: '5', title: 'Weather Forecast', icon: 'cloud' },
-  { id: '6', title: 'Emergency SOS', icon: 'alert' },
+// ── Hero Carousel Slides ─────────────────────────────
+const heroSlides = [
+  {
+    image: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=800&q=70',
+    title: 'Discover India',
+    subtitle: 'Explore 320+ iconic destinations across 32 states',
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&q=70',
+    title: 'Paris, France',
+    subtitle: 'The City of Light awaits your adventure',
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&q=70',
+    title: 'Tokyo, Japan',
+    subtitle: 'Ancient traditions meet neon-lit modernity',
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=70',
+    title: 'Tropical Paradise',
+    subtitle: 'Find serenity on pristine beaches',
+  },
 ];
 
-// Tool navigation map
+// ── Tool Data ────────────────────────────────────────
+const tools = [
+  { id: '1', title: 'Image Translator', icon: 'image', gradient: ['#C9A84C20', '#C9A84C10'] },
+  { id: '2', title: 'Voice Translator', icon: 'mic', gradient: ['#3B82F620', '#3B82F610'] },
+  { id: '3', title: 'Smart Navigation', icon: 'map', gradient: ['#10B98120', '#10B98110'] },
+  { id: '4', title: 'Currency Converter', icon: 'cash', gradient: ['#F59E0B20', '#F59E0B10'] },
+  { id: '5', title: 'Weather Forecast', icon: 'cloud', gradient: ['#6366F120', '#6366F110'] },
+  { id: '6', title: 'Emergency SOS', icon: 'alert', gradient: ['#EF444420', '#EF444410'] },
+  { id: '7', title: 'AI Assistant', icon: 'sparkles', gradient: ['#8B5CF620', '#8B5CF610'] },
+];
+
 const TOOL_NAV = {
   'Image Translator': 'ImageTranslator',
   'Voice Translator': 'VoiceTranslator',
@@ -42,206 +70,384 @@ const TOOL_NAV = {
   'Currency Converter': 'CurrencyConverter',
   'Weather Forecast': 'Weather',
   'Emergency SOS': 'Emergency',
+  'AI Assistant': 'AIChat',
 };
 
-// Data for destination mood board / recently visited
+const TOOL_COLORS = {
+  'Image Translator': '#C9A84C',
+  'Voice Translator': '#3B82F6',
+  'Smart Navigation': '#10B981',
+  'Currency Converter': '#F59E0B',
+  'Weather Forecast': '#6366F1',
+  'Emergency SOS': '#EF4444',
+  'AI Assistant': '#8B5CF6',
+};
+
+// ── Destination Mood Board ───────────────────────────
 const recentCities = [
-  { name: 'Paris', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&q=80', flag: '🇫🇷' },
-  { name: 'Tokyo', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400&q=80', flag: '🇯🇵' },
-  { name: 'Dubai', image: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=400&q=80', flag: '🇦🇪' },
-  { name: 'New York', image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=400&q=80', flag: '🇺🇸' },
+  {
+    name: 'Jaipur',
+    image: 'https://images.unsplash.com/photo-1599661046289-e31897846e41?w=400&q=80',
+    tag: 'Heritage',
+    rating: '4.8',
+    trending: true,
+  },
+  {
+    name: 'Goa',
+    image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=400&q=80',
+    tag: 'Beach',
+    rating: '4.6',
+    trending: true,
+  },
+  {
+    name: 'Manali',
+    image: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=400&q=80',
+    tag: 'Nature',
+    rating: '4.7',
+    trending: false,
+  },
+  {
+    name: 'Varanasi',
+    image: 'https://images.unsplash.com/photo-1561361513-2d000a50f0dc?w=400&q=80',
+    tag: 'Temple',
+    rating: '4.5',
+    trending: false,
+  },
+  {
+    name: 'Kerala',
+    image: 'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=400&q=80',
+    tag: 'Nature',
+    rating: '4.9',
+    trending: true,
+  },
 ];
 
-const NOTIFICATIONS = [
-  { id: '1', icon: 'checkmark-circle', title: 'Welcome to TouristGuide!', time: 'Just now', read: false },
-  { id: '2', icon: 'earth', title: '320+ places now available in Explore', time: '2h ago', read: false },
+// ── Inspirational Quotes ─────────────────────────────
+const travelQuotes = [
+  'Discover hidden gems around every corner',
+  'Navigate the world with confidence',
+  'Every journey tells a story',
+  'Explore. Dream. Discover.',
 ];
 
-function FeatureCard({ icon, title, onPress }) {
+// (Removed - using real notification system via useNotifications hook)
+
+// ── Greeting helper ──────────────────────────────────
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return { text: 'Good Morning', emoji: '☀️' };
+  if (hour < 17) return { text: 'Good Afternoon', emoji: '🌤️' };
+  if (hour < 21) return { text: 'Good Evening', emoji: '🌅' };
+  return { text: 'Good Night', emoji: '🌙' };
+}
+
+// ══════════════════════════════════════════════════════
+// COMPONENTS
+// ══════════════════════════════════════════════════════
+
+function FeatureCard({ icon, title, onPress, index }) {
   const { theme } = useTheme();
-  
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const iconColor = TOOL_COLORS[title] || theme.colors.gold;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        delay: index * 80,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        delay: index * 80,
+        speed: 14,
+        bounciness: 4,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index]);
+
   return (
-    <GlassCard style={styles.toolCard} onPress={onPress}>
-      <View style={styles.iconWrapper}>
-        <Ionicons name={icon} size={24} color={theme.colors.gold} />
-      </View>
-      <Text style={[theme.typography.label, styles.toolTitle, { color: theme.colors.ivory }]}>
-        {title}
-      </Text>
-      <Ionicons name="chevron-forward" size={14} color={theme.colors.goldMuted} style={styles.arrowIcon} />
-    </GlassCard>
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+      <GlassCard style={styles.toolCard} onPress={onPress}>
+        <View style={[styles.iconWrapper, { backgroundColor: iconColor + '18' }]}>
+          <Ionicons name={icon} size={24} color={iconColor} />
+        </View>
+        <Text style={[theme.typography.label, styles.toolTitle, { color: theme.colors.ivory }]}>
+          {title}
+        </Text>
+        <Ionicons name="chevron-forward" size={14} color={theme.colors.goldMuted} style={styles.arrowIcon} />
+      </GlassCard>
+    </Animated.View>
   );
 }
 
-function CityCard({ city }) {
+function CityCard({ city, index }) {
   const { theme } = useTheme();
-  
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(40)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        delay: index * 120,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        delay: index * 120,
+        speed: 12,
+        bounciness: 5,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index]);
+
   return (
-    <TouchableOpacity activeOpacity={0.8}>
-      <ImageBackground
-        source={{ uri: city.image }}
-        style={styles.cityCard}
-        imageStyle={{ borderRadius: 14 }}
-      >
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.8)']}
-          style={styles.cityCardOverlay}
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateX: slideAnim }] }}>
+      <TouchableOpacity activeOpacity={0.85}>
+        <ImageBackground
+          source={{ uri: city.image }}
+          style={styles.cityCard}
+          imageStyle={{ borderRadius: 18 }}
         >
-          <Text style={[theme.typography.displayM, styles.cityName, { color: theme.colors.ivory }]}>
-            {city.name}
-          </Text>
-          <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>
-            {city.flag} Destination
-          </Text>
-        </LinearGradient>
-      </ImageBackground>
-    </TouchableOpacity>
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.85)']}
+            style={styles.cityCardOverlay}
+          >
+            {/* Trending badge */}
+            {city.trending && (
+              <View style={styles.trendingBadge}>
+                <Ionicons name="flame" size={12} color="#FF6B35" />
+                <Text style={styles.trendingText}>Trending</Text>
+              </View>
+            )}
+
+            {/* Rating */}
+            <View style={styles.ratingRow}>
+              <Ionicons name="star" size={12} color="#FFD700" />
+              <Text style={[theme.typography.caption, { color: '#FFD700', marginLeft: 4 }]}>
+                {city.rating}
+              </Text>
+            </View>
+
+            <Text style={[theme.typography.displayM, styles.cityName, { color: '#fff' }]}>
+              {city.name}
+            </Text>
+            <View style={[styles.cityTag, { backgroundColor: theme.colors.gold + '30' }]}>
+              <Text style={[theme.typography.caption, { color: theme.colors.goldLight, fontSize: 10 }]}>
+                {city.tag}
+              </Text>
+            </View>
+          </LinearGradient>
+        </ImageBackground>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
+
+function StatItem({ value, suffix, label, delay }) {
+  const { theme } = useTheme();
+  return (
+    <View style={styles.statItem}>
+      <AnimatedCounter
+        target={value}
+        suffix={suffix}
+        duration={2000}
+        delay={delay}
+        style={[theme.typography.displayM, { color: theme.colors.gold }]}
+      />
+      <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 2 }]}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+// ══════════════════════════════════════════════════════
+// MAIN SCREEN
+// ══════════════════════════════════════════════════════
 
 export default function HomeScreen() {
   const navigation = useNavigation();
   const { theme } = useTheme();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState(NOTIFICATIONS);
+  const { user } = useAuth();
+  const { unreadCount } = useNotifications(user?.uid);
+  const greeting = getGreeting();
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const markAllRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
+  // FAB animation
+  const fabScale = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(fabScale, {
+      toValue: 1,
+      delay: 1200,
+      speed: 10,
+      bounciness: 12,
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
   return (
     <View style={styles.container}>
-      {/* ── BACKGROUND ────────────────────────────────────── */}
+      {/* ── BACKGROUND ───────────────────────────────── */}
       <LinearGradient
-        colors={[theme.colors.obsidian, theme.colors.deepNavy]}
+        colors={[theme.colors.obsidian, '#0A0F1C', theme.colors.deepNavy]}
         style={StyleSheet.absoluteFill}
       />
-      <FloatingParticles count={20} color={theme.colors.borderGold} />
+      <FloatingParticles count={18} color={theme.colors.borderGold} />
 
-      {/* ── TOP HEADER ────────────────────────────────────── */}
-      <View style={[styles.headerArea, { backgroundColor: 'transparent' }]}>
-        <View style={styles.headerTop}>
-          <View style={{ flex: 1 }}>
-            <Text style={[theme.typography.caption, { color: theme.colors.emerald, marginBottom: 4 }]}>
-              Good Morning 🌤️
-            </Text>
-            <GoldShimmerText
-              text="Where to next?"
-              style={theme.typography.displayL}
-              delay={300}
-            />
-          </View>
-          
-          <TouchableOpacity
-            style={[styles.bellButton, { backgroundColor: theme.colors.glassBg, borderColor: theme.colors.glassStroke, borderWidth: 1 }]}
-            onPress={() => setShowNotifications(true)}
-          >
-            <Ionicons name="notifications-outline" size={24} color={theme.colors.gold} />
-            {unreadCount > 0 && (
-              <View style={[styles.bellBadge, { backgroundColor: theme.colors.crimson }]}>
-                <Text style={styles.bellBadgeText}>{unreadCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
-        <StaggerRevealText
-          text="Explore the world with confidence."
-          style={[theme.typography.body, { color: theme.colors.parchment, marginTop: 8 }]}
-          staggerDelay={20}
-        />
-      </View>
-
-      {/* ── SCROLLABLE LOWER SECTION ───────────────────────── */}
+      {/* ── SCROLLABLE CONTENT ────────────────────────── */}
       <ScrollView
-        style={styles.lowerScroll}
-        contentContainerStyle={styles.lowerContent}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Quick Tools Header */}
-        <Text style={[theme.typography.headingS, { color: theme.colors.gold, marginBottom: 16 }]}>
-          Essential Tools
-        </Text>
-        
-        {/* Grid */}
+        {/* ── Header ─────────────────────────────────── */}
+        <View style={styles.headerArea}>
+          <View style={styles.headerTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={[theme.typography.caption, { color: theme.colors.emerald, marginBottom: 4 }]}>
+                {greeting.text} {greeting.emoji}
+              </Text>
+              <GoldShimmerText
+                text="Where to next?"
+                style={theme.typography.displayL}
+                delay={300}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.bellButton, {
+                backgroundColor: theme.colors.glassBg,
+                borderColor: theme.colors.glassStroke,
+                borderWidth: 1,
+              }]}
+              onPress={() => navigation.navigate('Notifications')}
+            >
+              <Ionicons name="notifications-outline" size={24} color={theme.colors.gold} />
+              {unreadCount > 0 && (
+                <View style={[styles.bellBadge, { backgroundColor: theme.colors.crimson }]}>
+                  <Text style={styles.bellBadgeText}>{unreadCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Typing subtitle */}
+          <View style={{ marginTop: 8 }}>
+            <TypingText
+              phrases={travelQuotes}
+              typingSpeed={50}
+              pauseDuration={2500}
+              style={[theme.typography.body, { color: theme.colors.parchment }]}
+            />
+          </View>
+        </View>
+
+        {/* ── Hero Carousel ──────────────────────────── */}
+        <View style={{ marginTop: 8 }}>
+          <AnimatedHeroCard
+            slides={heroSlides}
+            height={240}
+            interval={4500}
+          />
+        </View>
+
+        {/* ── Stats Ribbon ────────────────────────────── */}
+        <View style={[styles.statsRibbon, {
+          backgroundColor: theme.colors.glassBg,
+          borderColor: theme.colors.glassStroke,
+        }]}>
+          <StatItem value={320} suffix="+" label="Places" delay={400} />
+          <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
+          <StatItem value={32} suffix="" label="States" delay={600} />
+          <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
+          <StatItem value={7} suffix="" label="Tools" delay={800} />
+        </View>
+
+        <GradientDivider icon="compass" label="Essential Tools" />
+
+        {/* ── Quick Tools Grid ────────────────────────── */}
         <View style={styles.toolsGrid}>
-          {tools.map(item => (
+          {tools.map((item, index) => (
             <FeatureCard
               key={item.id}
               icon={item.icon}
               title={item.title}
+              index={index}
               onPress={() => navigation.navigate(TOOL_NAV[item.title])}
             />
           ))}
         </View>
 
-        {/* Destination Mood Board */}
-        <Text style={[theme.typography.headingS, { color: theme.colors.gold, marginTop: 30, marginBottom: 16 }]}>
-          Destination Mood Board
-        </Text>
+        <GradientDivider icon="heart" label="Destinations" />
+
+        {/* ── Destination Mood Board ──────────────────── */}
+        <View style={styles.moodBoardHeader}>
+          <Text style={[theme.typography.headingS, { color: theme.colors.ivory }]}>
+            Trending Destinations
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <PulsingDot size={6} color={theme.colors.emerald} />
+            <Text style={[theme.typography.caption, { color: theme.colors.emerald }]}>Live</Text>
+          </View>
+        </View>
+
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingRight: 20 }}
         >
-          {recentCities.map(city => (
-             <CityCard key={city.name} city={city} />
+          {recentCities.map((city, index) => (
+            <CityCard key={city.name} city={city} index={index} />
           ))}
         </ScrollView>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* ── NOTIFICATION MODAL ─────────────────────────────── */}
-      <Modal
-        visible={showNotifications}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowNotifications(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowNotifications(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={[styles.notifPanel, { backgroundColor: theme.colors.midnight, borderWidth: 1, borderColor: theme.colors.borderSilver }]}>
-                <View style={styles.notifHeader}>
-                  <Text style={[theme.typography.headingS, { color: theme.colors.ivory }]}>Notifications</Text>
-                  {unreadCount > 0 && (
-                    <TouchableOpacity onPress={markAllRead}>
-                      <Text style={[theme.typography.caption, { color: theme.colors.gold }]}>Mark all read</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                {notifications.map(n => (
-                  <View key={n.id} style={[styles.notifRow, !n.read && { backgroundColor: theme.colors.glassBg }]}>
-                    <View style={[styles.notifIcon, { backgroundColor: 'rgba(201, 168, 76, 0.15)' }]}>
-                      <Ionicons name={n.icon} size={18} color={theme.colors.emerald} />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={[theme.typography.body, { color: theme.colors.ivory, fontSize: 13 }]}>{n.title}</Text>
-                      <Text style={[theme.typography.caption, { color: theme.colors.ash, marginTop: 2 }]}>{n.time}</Text>
-                    </View>
-                    {!n.read && <View style={[styles.unreadDot, { backgroundColor: theme.colors.gold }]} />}
-                  </View>
-                ))}
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+      {/* ── Floating AI FAB ───────────────────────────── */}
+      <Animated.View style={[styles.fab, { transform: [{ scale: fabScale }] }]}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('AIChat')}
+          style={styles.fabInner}
+        >
+          <LinearGradient
+            colors={[theme.colors.gold, theme.colors.goldMuted]}
+            style={styles.fabGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <Ionicons name="sparkles" size={26} color={theme.colors.obsidian} />
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
+
+
     </View>
   );
 }
 
+// ══════════════════════════════════════════════════════
+// STYLES
+// ══════════════════════════════════════════════════════
+
 const TOOL_GAP = 12;
-const TOOL_CARD_W = (SCREEN_W - 40 - TOOL_GAP) / 2; // 2 cols
+const TOOL_CARD_W = (SCREEN_W - 40 - TOOL_GAP) / 2;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 20 },
   headerArea: {
     paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 16,
     zIndex: 10,
   },
   headerTop: {
@@ -260,17 +466,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   bellBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  lowerScroll: {
+
+  // Stats Ribbon
+  statsRibbon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    marginHorizontal: 20,
+    marginTop: 20,
+    paddingVertical: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  statItem: {
+    alignItems: 'center',
     flex: 1,
   },
-  lowerContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+  statDivider: {
+    width: 1,
+    height: 30,
   },
+
+  // Tools Grid
   toolsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    paddingHorizontal: 20,
     gap: TOOL_GAP,
   },
   toolCard: {
@@ -282,8 +504,7 @@ const styles = StyleSheet.create({
     minHeight: 120,
   },
   iconWrapper: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(201, 168, 76, 0.1)',
+    width: 44, height: 44, borderRadius: 14,
     justifyContent: 'center', alignItems: 'center',
   },
   toolTitle: {
@@ -296,42 +517,85 @@ const styles = StyleSheet.create({
     bottom: 16,
     right: 16,
   },
+
+  // Mood board
+  moodBoardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
   cityCard: {
-    width: 200,
-    height: 250,
-    marginRight: 16,
-    borderRadius: 14,
+    width: 180,
+    height: 240,
+    marginLeft: 16,
+    borderRadius: 18,
     overflow: 'hidden',
     justifyContent: 'flex-end',
   },
   cityCardOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
     padding: 16,
-    paddingTop: 40, // gradient area
+    borderRadius: 18,
+  },
+  trendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 53, 0.2)',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    gap: 4,
+    marginBottom: 'auto',
+  },
+  trendingText: {
+    color: '#FF6B35',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
   },
   cityName: {
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-start', paddingTop: 110,
+  cityTag: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
-  notifPanel: {
-    marginHorizontal: 16,
-    borderRadius: 20, padding: 16,
+
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    zIndex: 100,
   },
-  notifHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 14,
+  fabInner: {
+    borderRadius: 30,
+    overflow: 'hidden',
+    // Shadow
+    shadowColor: '#C9A84C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 10,
   },
-  notifRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 12, borderRadius: 12,
-    marginHorizontal: -8, paddingHorizontal: 8,
+  fabGradient: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  notifIcon: {
-    width: 36, height: 36, borderRadius: 18,
-    justifyContent: 'center', alignItems: 'center',
-  },
+
   unreadDot: {
     width: 8, height: 8, borderRadius: 4, marginLeft: 8,
   },

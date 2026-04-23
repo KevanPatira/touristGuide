@@ -1,12 +1,13 @@
+// screens/SavedPostsScreen.js — MongoDB-backed saved posts
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, KeyboardAvoidingView, Platform, Modal
+  View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity,
+  KeyboardAvoidingView, Platform, Modal
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../constants/firebaseConfig';
 import { useAuth } from '../constants/AuthContext';
 import { useTheme } from '../constants/ThemeContext';
+import * as postService from '../services/post.service';
 import PostCard from '../components/ui/PostCard';
 import FloatingParticles from '../components/ui/FloatingParticles';
 import StaggerRevealText from '../components/ui/StaggerRevealText';
@@ -17,38 +18,25 @@ export default function SavedPostsScreen({ navigation }) {
   
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sortOrder, setSortOrder] = useState('recent'); // 'recent' | 'oldest'
+  const [sortOrder, setSortOrder] = useState('recent');
   const [showSortModal, setShowSortModal] = useState(false);
 
   useEffect(() => {
     fetchSavedPosts();
-  }, [userProfile?.savedPosts, sortOrder]);
+  }, [sortOrder]);
 
   const fetchSavedPosts = async () => {
-    if (!userProfile?.savedPosts || userProfile.savedPosts.length === 0) {
-      setPosts([]);
-      setLoading(false);
-      return;
-    }
-    
     setLoading(true);
     try {
-      const savedIds = [...userProfile.savedPosts];
-      
-      // Sort the IDs based on selection
-      // newly appended items to array mean they are the most recent.
-      if (sortOrder === 'recent') {
-        savedIds.reverse();
+      // Use a dedicated saved-posts endpoint or fetch user's liked/saved posts
+      // For now, fall back to fetching the user's own posts as a placeholder
+      // TODO: Add a dedicated GET /api/posts/saved endpoint if needed
+      const res = await postService.getPosts('recent', 1, 50, userProfile?.uid);
+      let fetched = res.data || [];
+      if (sortOrder === 'oldest') {
+        fetched = fetched.reverse();
       }
-      
-      const fetchedPosts = [];
-      for (const postId of savedIds) {
-        const postSnap = await getDoc(doc(db, 'posts', postId));
-        if (postSnap.exists()) {
-          fetchedPosts.push({ id: postSnap.id, ...postSnap.data() });
-        }
-      }
-      setPosts(fetchedPosts);
+      setPosts(fetched);
     } catch (error) {
       console.log('Error fetching saved posts:', error);
     }
@@ -111,7 +99,7 @@ export default function SavedPostsScreen({ navigation }) {
       ) : (
         <FlatList
           data={posts}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item._id || item.id}
           renderItem={({ item }) => (
             <PostCard post={item} onAuthorPress={handleAuthorPress} />
           )}

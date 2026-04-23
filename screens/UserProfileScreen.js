@@ -1,18 +1,16 @@
-// screens/UserProfileScreen.js — View another user's profile
+// screens/UserProfileScreen.js — MongoDB-backed user profile
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
   Image, ActivityIndicator, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  doc, getDoc, collection, query, where, orderBy, onSnapshot, limit,
-} from 'firebase/firestore';
-import { db } from '../constants/firebaseConfig';
 import { useAuth } from '../constants/AuthContext';
 import { useTheme } from '../constants/ThemeContext';
 import useFollow from '../hooks/useFollow';
-import { getChatId } from '../hooks/useChat';
+import api from '../services/api';
+import * as postService from '../services/post.service';
+import * as chatService from '../services/chat.service';
 
 import GlassCard from '../components/ui/GlassCard';
 import PressableGoldButton from '../components/ui/PressableGoldButton';
@@ -28,32 +26,44 @@ export default function UserProfileScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
 
   const {
-    followStatus, // 'none' | 'pending' | 'following'
+    followStatus,
     loading: followLoading,
     followUser,
     unfollowUser,
   } = useFollow(user?.uid, userId);
 
-  // ═══ Fetch user profile ═══
+  // ═══ Fetch user profile from MongoDB ═══
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const docSnap = await getDoc(doc(db, 'users', userId));
-        if (docSnap.exists()) {
-          setProfile({ uid: userId, ...docSnap.data() });
+        const { data } = await api.get(`/auth/user/${userId}`);
+        if (data.success) {
+          setProfile({
+            uid: userId,
+            displayName: data.data.name,
+            username: data.data.username || '',
+            avatarUrl: data.data.avatar || '',
+            bio: data.data.bio || '',
+            isPrivate: data.data.isPrivate || false,
+            postCount: data.data.postCount || 0,
+            followerCount: data.data.followerCount || 0,
+            followingCount: data.data.followingCount || 0,
+          });
         } else {
           Alert.alert('Error', 'User not found.');
           navigation.goBack();
         }
       } catch (e) {
         console.log('Profile fetch error:', e);
+        Alert.alert('Error', 'Could not load profile.');
+        navigation.goBack();
       }
       setLoading(false);
     };
     fetchProfile();
   }, [userId]);
 
-  // ═══ Fetch user's posts (only if public or following) ═══
+  // ═══ Fetch user's posts from MongoDB ═══
   useEffect(() => {
     if (!profile) return;
 
@@ -63,19 +73,15 @@ export default function UserProfileScreen({ route, navigation }) {
       return;
     }
 
-    const postsRef = collection(db, 'posts');
-    const q = query(
-      postsRef,
-      where('authorId', '==', userId),
-      orderBy('createdAt', 'desc'),
-      limit(20)
-    );
-
-    const unsub = onSnapshot(q, (snapshot) => {
-      setPosts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-
-    return unsub;
+    const fetchPosts = async () => {
+      try {
+        const res = await postService.getPosts('recent', 1, 20, userId);
+        setPosts(res.data || []);
+      } catch (e) {
+        console.log('Fetch user posts error:', e);
+      }
+    };
+    fetchPosts();
   }, [profile, followStatus, userId]);
 
   // ═══ Follow / Unfollow handler ═══
@@ -90,7 +96,22 @@ export default function UserProfileScreen({ route, navigation }) {
         ]
       );
     } else {
-      await followUser(profile.isPrivate);
+      await followUser();
+    }
+  };
+
+  // ═══ Open chat via MongoDB API ═══
+  const handleMessagePress = async () => {
+    try {
+      const res = await chatService.createOrGetChat(userId);
+      navigation.navigate('Chat', {
+        chatId: res.data.chatId,
+        otherUserId: userId,
+        otherUserName: profile.displayName,
+        otherUserAvatar: profile.avatarUrl || '',
+      });
+    } catch (e) {
+      console.log('Open chat error:', e);
     }
   };
 
@@ -148,7 +169,7 @@ export default function UserProfileScreen({ route, navigation }) {
 
       <FlatList
         data={canViewPosts ? posts : []}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item._id || item.id}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={() => (
           <View style={styles.profileSection}>
@@ -233,12 +254,7 @@ export default function UserProfileScreen({ route, navigation }) {
                 {followStatus === 'following' && (
                   <TouchableOpacity
                     style={[styles.messageBtn, { backgroundColor: theme.colors.midnight, borderColor: theme.colors.borderSilver }]}
-                    onPress={() => navigation.navigate('Chat', {
-                      chatId: getChatId(user.uid, userId),
-                      otherUserId: userId,
-                      otherUserName: profile.displayName,
-                      otherUserAvatar: profile.avatarUrl || '',
-                    })}
+                    onPress={handleMessagePress}
                   >
                     <Ionicons name="chatbubble-outline" size={20} color={theme.colors.gold} />
                   </TouchableOpacity>

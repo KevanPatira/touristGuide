@@ -1,12 +1,10 @@
-// screens/NotificationsScreen.js — View and manage notifications
+// screens/NotificationsScreen.js — MongoDB-backed notifications
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
-  Image, ActivityIndicator, Alert,
+  Image, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../constants/firebaseConfig';
 import { useAuth } from '../constants/AuthContext';
 import { useTheme } from '../constants/ThemeContext';
 import useNotifications from '../hooks/useNotifications';
@@ -20,34 +18,32 @@ export default function NotificationsScreen({ navigation }) {
   const { user } = useAuth();
   const { notifications, loading, unreadCount, markAsRead, markAllAsRead } = useNotifications(user?.uid);
 
-  // Note: we can't instantiate useFollow for every user in a list easily,
-  // so we'll use a single instance or direct functions for accept/decline.
-  // Actually, we can use the accept/decline functions from useFollow with hardcoded UIDs by passing currentUserId.
-  const { acceptFollowRequest, declineFollowRequest } = useFollow(user?.uid, null); 
+  const { acceptFollowRequest, declineFollowRequest } = useFollow(user?.uid, null);
 
   const handleNotificationPress = async (item) => {
     if (!item.read) {
-      await markAsRead(item.id);
+      await markAsRead(item.id || item._id);
     }
     
     // Navigate based on type
+    const fromId = item.fromUserId?._id || item.fromUserId;
     if (item.type === 'follow_request' || item.type === 'new_follower' || item.type === 'follow_accepted') {
-      navigation.navigate('UserProfile', { userId: item.fromUserId });
+      navigation.navigate('UserProfile', { userId: fromId });
     } else if (item.postId) {
-      // Could navigate to single post view (not implemented yet), 
-      // for now go to author's profile
-      navigation.navigate('UserProfile', { userId: item.fromUserId });
+      navigation.navigate('UserProfile', { userId: fromId });
     }
   };
 
   const handleAcceptRequest = async (item) => {
-    await acceptFollowRequest(item.fromUserId);
-    await markAsRead(item.id);
+    const fromId = item.fromUserId?._id || item.fromUserId;
+    await acceptFollowRequest(fromId);
+    await markAsRead(item.id || item._id);
   };
 
   const handleDeclineRequest = async (item) => {
-    await declineFollowRequest(item.fromUserId);
-    await markAsRead(item.id);
+    const fromId = item.fromUserId?._id || item.fromUserId;
+    await declineFollowRequest(fromId);
+    await markAsRead(item.id || item._id);
   };
 
   // ═══ Format Time ═══
@@ -67,9 +63,18 @@ export default function NotificationsScreen({ navigation }) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  // ═══ Notification Row Component ═══
-  const NotificationContent = ({ item, fromUser }) => {
-    const initials = fromUser?.displayName ? fromUser.displayName[0].toUpperCase() : '?';
+  // ═══ Notification Item ═══
+  const NotificationItem = ({ item }) => {
+    // fromUserId may be populated or just a string
+    const fromUser = typeof item.fromUserId === 'object' ? {
+      displayName: item.fromUserName || item.fromUserId?.name || 'Someone',
+      avatarUrl: item.fromUserAvatar || item.fromUserId?.avatar || '',
+    } : {
+      displayName: item.fromUserName || 'Someone',
+      avatarUrl: item.fromUserAvatar || '',
+    };
+    
+    const initials = fromUser.displayName ? fromUser.displayName[0].toUpperCase() : '?';
 
     let icon = { name: 'notifications', color: theme.colors.copper };
     let text = 'did something.';
@@ -88,70 +93,18 @@ export default function NotificationsScreen({ navigation }) {
         text = 'requested to follow you.';
         break;
       case 'new_follower':
+        icon = { name: 'person-add', color: theme.colors.gold };
+        text = 'started following you.';
+        break;
       case 'follow_accepted':
         icon = { name: 'person-add', color: theme.colors.gold };
-        text = item.type === 'new_follower' ? 'started following you.' : 'accepted your follow request.';
+        text = 'accepted your follow request.';
+        break;
+      case 'new_post':
+        icon = { name: 'document-text', color: theme.colors.parchment };
+        text = 'shared a new post.';
         break;
     }
-
-    return (
-      <View style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}>
-        <View style={styles.iconBadge}>
-          <Ionicons name={icon.name} size={16} color={icon.color} />
-        </View>
-        <View style={[styles.avatar, { backgroundColor: theme.colors.copper + '44' }]}>
-          {fromUser?.avatarUrl ? (
-            <Image source={{ uri: fromUser.avatarUrl }} style={styles.avatarImg} />
-          ) : (
-            <Text style={{ color: theme.colors.copper, fontSize: 16, fontWeight: 'bold' }}>{initials}</Text>
-          )}
-        </View>
-        <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={[theme.typography.body, { color: theme.colors.ivory }]}>
-            <Text style={{ fontWeight: 'bold' }}>{fromUser?.displayName || 'Someone'} </Text>
-            {text}
-          </Text>
-          <Text style={[theme.typography.caption, { color: theme.colors.ash, marginTop: 4 }]}>
-            {formatTime(item.createdAt)}
-          </Text>
-
-          {item.type === 'follow_request' && (
-            <View style={styles.actionRow}>
-              <TouchableOpacity 
-                style={[styles.actionBtn, { backgroundColor: theme.colors.gold }]}
-                onPress={() => handleAcceptRequest(item)}
-              >
-                <Text style={{ color: theme.colors.obsidian, fontWeight: '600', fontSize: 12 }}>Accept</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.actionBtn, { backgroundColor: theme.colors.midnight, borderWidth: 1, borderColor: theme.colors.ash }]}
-                onPress={() => handleDeclineRequest(item)}
-              >
-                <Text style={{ color: theme.colors.ivory, fontWeight: '600', fontSize: 12 }}>Decline</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-        {!item.read && (
-          <View style={[styles.unreadDot, { backgroundColor: theme.colors.gold }]} />
-        )}
-      </View>
-    );
-  };
-
-  // ═══ Individual Notification Item ═══
-  const NotificationItem = ({ item }) => {
-    const [fromUser, setFromUser] = useState(null);
-
-    useEffect(() => {
-      if (item.fromUserId) {
-        getDoc(doc(db, 'users', item.fromUserId)).then(snap => {
-          if (snap.exists()) {
-            setFromUser({ uid: snap.id, ...snap.data() });
-          }
-        });
-      }
-    }, [item.fromUserId]);
 
     return (
       <TouchableOpacity
@@ -162,7 +115,47 @@ export default function NotificationsScreen({ navigation }) {
         activeOpacity={0.7}
         onPress={() => handleNotificationPress(item)}
       >
-        <NotificationContent item={item} fromUser={fromUser} />
+        <View style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}>
+          <View style={styles.iconBadge}>
+            <Ionicons name={icon.name} size={16} color={icon.color} />
+          </View>
+          <View style={[styles.avatar, { backgroundColor: theme.colors.copper + '44' }]}>
+            {fromUser.avatarUrl ? (
+              <Image source={{ uri: fromUser.avatarUrl }} style={styles.avatarImg} />
+            ) : (
+              <Text style={{ color: theme.colors.copper, fontSize: 16, fontWeight: 'bold' }}>{initials}</Text>
+            )}
+          </View>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={[theme.typography.body, { color: theme.colors.ivory }]}>
+              <Text style={{ fontWeight: 'bold' }}>{fromUser.displayName} </Text>
+              {text}
+            </Text>
+            <Text style={[theme.typography.caption, { color: theme.colors.ash, marginTop: 4 }]}>
+              {formatTime(item.createdAt)}
+            </Text>
+
+            {item.type === 'follow_request' && (
+              <View style={styles.actionRow}>
+                <TouchableOpacity 
+                  style={[styles.actionBtn, { backgroundColor: theme.colors.gold }]}
+                  onPress={() => handleAcceptRequest(item)}
+                >
+                  <Text style={{ color: theme.colors.obsidian, fontWeight: '600', fontSize: 12 }}>Accept</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.actionBtn, { backgroundColor: theme.colors.midnight, borderWidth: 1, borderColor: theme.colors.ash }]}
+                  onPress={() => handleDeclineRequest(item)}
+                >
+                  <Text style={{ color: theme.colors.ivory, fontWeight: '600', fontSize: 12 }}>Decline</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+          {!item.read && (
+            <View style={[styles.unreadDot, { backgroundColor: theme.colors.gold }]} />
+          )}
+        </View>
       </TouchableOpacity>
     );
   };
@@ -210,7 +203,7 @@ export default function NotificationsScreen({ navigation }) {
       ) : (
         <FlatList
           data={notifications}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.id || item._id}
           renderItem={({ item }) => <NotificationItem item={item} />}
           contentContainerStyle={{ paddingBottom: 40 }}
           showsVerticalScrollIndicator={false}

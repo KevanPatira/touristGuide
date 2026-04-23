@@ -1,22 +1,7 @@
-// constants/AuthContext.js
+// constants/AuthContext.js — Auth context backed by Express + MongoDB API
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  updateProfile,
-  GoogleAuthProvider,
-  signInWithCredential,
-} from 'firebase/auth';
-import {
-  doc,
-  setDoc,
-  getDoc,
-  updateDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { auth, db } from './firebaseConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as authService from '../services/auth.service';
 
 const AuthContext = createContext({
   user: null,
@@ -24,133 +9,132 @@ const AuthContext = createContext({
   loading: true,
   signUp: async () => {},
   signIn: async () => {},
-  signInWithGoogle: async () => {},
   logOut: async () => {},
   refreshProfile: async () => {},
   updateUserProfile: async () => {},
 });
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);          // Firebase Auth user
-  const [userProfile, setUserProfile] = useState(null); // Firestore profile data
+  const [user, setUser] = useState(null);           // User object from API
+  const [userProfile, setUserProfile] = useState(null); // Same as user (kept for compat)
   const [loading, setLoading] = useState(true);
 
-  // Listen for auth state changes
+  // On app start: check for existing token and rehydrate user
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        await fetchUserProfile(firebaseUser.uid);
-      } else {
+    const rehydrate = async () => {
+      try {
+        const token = await AsyncStorage.getItem('authToken');
+        if (token) {
+          const userData = await authService.getMe();
+          const enriched = { ...userData, uid: userData._id };
+          setUser(enriched);
+          setUserProfile(buildProfile(enriched));
+        }
+      } catch (error) {
+        // Token expired or invalid — clear it
+        console.log('[Auth] Rehydration failed:', error.message);
+        await AsyncStorage.removeItem('authToken');
         setUser(null);
         setUserProfile(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
-    return unsubscribe;
+    };
+
+    rehydrate();
   }, []);
 
-  // Fetch Firestore user profile
-  const fetchUserProfile = async (uid) => {
-    try {
-      const docRef = doc(db, 'users', uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setUserProfile({ uid, ...docSnap.data() });
-      }
-    } catch (e) {
-      console.log('Error fetching profile:', e);
-    }
+  /**
+   * Build a profile object compatible with the existing UI
+   * (maps MongoDB user fields to the userProfile shape used by screens).
+   */
+  const buildProfile = (userData) => {
+    if (!userData) return null;
+    return {
+      uid: userData._id || userData.uid,
+      displayName: userData.name || '',
+      username: userData.username || (userData.name ? userData.name.toLowerCase().replace(/\s+/g, '_') : ''),
+      email: userData.email || '',
+      avatarUrl: userData.avatar || '',
+      bio: userData.bio || '',
+      isPrivate: userData.isPrivate || false,
+      gender: userData.gender || '',
+      age: userData.age || '',
+      followerCount: userData.followerCount || 0,
+      followingCount: userData.followingCount || 0,
+      postCount: userData.postCount || 0,
+      preferredLanguage: userData.preferredLanguage || 'English',
+      homeCountry: userData.homeCountry || '',
+      createdAt: userData.createdAt,
+    };
   };
 
-  // Sign up with email/password
+  // Sign up with name, email, password
   const signUp = async (email, password, username) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const { uid } = userCredential.user;
-
-    // Update Firebase Auth display name
-    await updateProfile(userCredential.user, { displayName: username });
-
-    // Create Firestore user document
-    const profileData = {
-      displayName: username,
-      username: username.toLowerCase().replace(/\s+/g, '_'),
-      email,
-      avatarUrl: '',
-      bio: '',
-      isPrivate: false,
-      gender: '',
-      age: '',
-      followerCount: 0,
-      followingCount: 0,
-      postCount: 0,
-      createdAt: serverTimestamp(),
-    };
-    await setDoc(doc(db, 'users', uid), profileData);
-    setUserProfile({ uid, ...profileData });
-
-    return userCredential.user;
+    const { user: userData } = await authService.register(username, email, password);
+    const enriched = { ...userData, uid: userData._id };
+    setUser(enriched);
+    setUserProfile(buildProfile(enriched));
+    return enriched;
   };
 
   // Sign in with email/password
   const signIn = async (email, password) => {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    await fetchUserProfile(userCredential.user.uid);
-    return userCredential.user;
+    const { user: userData } = await authService.login(email, password);
+    const enriched = { ...userData, uid: userData._id };
+    setUser(enriched);
+    setUserProfile(buildProfile(enriched));
+    return enriched;
   };
 
-  // Sign in with Google (using ID token from expo-auth-session)
+  // Google Sign-In: kept as no-op stub (can be wired to backend later)
   const signInWithGoogle = async (idToken) => {
-    const credential = GoogleAuthProvider.credential(idToken);
-    const userCredential = await signInWithCredential(auth, credential);
-    const { uid, displayName, email, photoURL } = userCredential.user;
-
-    // Check if user doc exists, create if first login
-    const docRef = doc(db, 'users', uid);
-    const docSnap = await getDoc(docRef);
-    if (!docSnap.exists()) {
-      const profileData = {
-        displayName: displayName || 'Traveler',
-        username: (displayName || 'traveler').toLowerCase().replace(/\s+/g, '_') + '_' + uid.slice(0, 4),
-        email: email || '',
-        avatarUrl: photoURL || '',
-        bio: '',
-        isPrivate: false,
-        gender: '',
-        age: '',
-        followerCount: 0,
-        followingCount: 0,
-        postCount: 0,
-        createdAt: serverTimestamp(),
-      };
-      await setDoc(docRef, profileData);
-      setUserProfile({ uid, ...profileData });
-    } else {
-      await fetchUserProfile(uid);
-    }
-    return userCredential.user;
+    console.warn('[Auth] Google sign-in via backend not yet implemented');
   };
 
   // Sign out
   const logOut = async () => {
-    await firebaseSignOut(auth);
+    await authService.logout();
     setUser(null);
     setUserProfile(null);
   };
 
-  // Refresh profile from Firestore
+  // Refresh profile from API
   const refreshProfile = async () => {
-    if (user) {
-      await fetchUserProfile(user.uid);
+    try {
+      const userData = await authService.getMe();
+      const enriched = { ...userData, uid: userData._id };
+      setUser(enriched);
+      setUserProfile(buildProfile(enriched));
+    } catch (error) {
+      console.log('[Auth] Profile refresh failed:', error.message);
     }
   };
 
-  // Update user profile fields in Firestore
+  // Update user profile fields
   const updateUserProfile = async (fields) => {
-    if (!user) return;
-    const docRef = doc(db, 'users', user.uid);
-    await updateDoc(docRef, fields);
-    setUserProfile((prev) => ({ ...prev, ...fields }));
+    try {
+      // Map frontend field names to API field names
+      const apiFields = {};
+      if (fields.displayName !== undefined) apiFields.name = fields.displayName;
+      if (fields.avatarUrl !== undefined) apiFields.avatar = fields.avatarUrl;
+      if (fields.bio !== undefined) apiFields.bio = fields.bio;
+      if (fields.preferredLanguage !== undefined) apiFields.preferredLanguage = fields.preferredLanguage;
+      if (fields.homeCountry !== undefined) apiFields.homeCountry = fields.homeCountry;
+      if (fields.username !== undefined) apiFields.username = fields.username;
+      if (fields.isPrivate !== undefined) apiFields.isPrivate = fields.isPrivate;
+      // Pass through any API-native field names
+      if (fields.name !== undefined) apiFields.name = fields.name;
+      if (fields.avatar !== undefined) apiFields.avatar = fields.avatar;
+
+      const updatedUser = await authService.updateProfile(apiFields);
+      const enriched = { ...updatedUser, uid: updatedUser._id };
+      setUser(enriched);
+      setUserProfile((prev) => ({ ...prev, ...fields, ...buildProfile(enriched) }));
+    } catch (error) {
+      console.log('[Auth] Profile update failed:', error.message);
+      throw error;
+    }
   };
 
   return (

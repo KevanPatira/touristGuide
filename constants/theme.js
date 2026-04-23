@@ -12,6 +12,7 @@ const colors = {
   goldMuted: '#8A6F34',  // subtle gold
   
   // Secondary Accents
+  copper: '#B87333',     // warm secondary accent
   emerald: '#10B981',    // success / detected language
   sapphire: '#3B82F6',   // info / links
   crimson: '#EF4444',    // error
@@ -34,6 +35,8 @@ const typography = {
   displayXL: { fontFamily: 'PlayfairDisplay_700Bold', fontSize: 36, letterSpacing: -0.5 },
   displayL: { fontFamily: 'PlayfairDisplay_600SemiBold', fontSize: 28 },
   displayM: { fontFamily: 'PlayfairDisplay_500Medium', fontSize: 22 },
+  displayS: { fontFamily: 'PlayfairDisplay_500Medium', fontSize: 18 },
+  headingM: { fontFamily: 'Inter_600SemiBold', fontSize: 18, letterSpacing: 0.15 },
   headingS: { fontFamily: 'Inter_600SemiBold', fontSize: 16, letterSpacing: 0.2 },
   body: { fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 24 },
   caption: { fontFamily: 'Inter_400Regular', fontSize: 12, letterSpacing: 0.5 },

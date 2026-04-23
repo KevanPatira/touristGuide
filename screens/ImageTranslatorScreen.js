@@ -24,6 +24,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 
+import { useAuth } from '../constants/AuthContext';
+import { translationService } from '../services/translation.service';
+
 import { useTheme } from '../constants/ThemeContext';
 import GlassCard from '../components/ui/GlassCard';
 import PressableGoldButton from '../components/ui/PressableGoldButton';
@@ -271,6 +274,7 @@ function ResultCard({ item, onRetry, onCopy }) {
 
 export default function ImageTranslatorScreen({ navigation }) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const toastRef = useRef(null);
 
   const [targetLang, setTargetLang] = useState('English');
@@ -290,9 +294,15 @@ export default function ImageTranslatorScreen({ navigation }) {
       try {
         const savedLang = await AsyncStorage.getItem(STORAGE_KEYS.DEFAULT_LANGUAGE);
         if (savedLang) setTargetLang(savedLang);
-        const savedHistory = await AsyncStorage.getItem(STORAGE_KEYS.HISTORY);
-        if (savedHistory) setHistory(JSON.parse(savedHistory));
-      } catch (_) {}
+        
+        // Fetch history from backend
+        const response = await translationService.getHistory(1, 20);
+        if (response.data && response.data.history) {
+          setHistory(response.data.history);
+        }
+      } catch (err) {
+        console.error('Failed to load history:', err);
+      }
     })();
   }, []);
 
@@ -320,20 +330,26 @@ export default function ImageTranslatorScreen({ navigation }) {
       const validResults = resultItems.filter((r) => r.extractedText && !r.error);
       if (validResults.length === 0) return;
       
-      const session = {
-        id: Date.now().toString(),
-        timestamp: Date.now(),
-        sourceLang: validResults[0]?.detectedLanguage || 'Unknown',
-        targetLang: validResults[0]?.targetLanguage || targetLang,
-        preview: validResults[0]?.translatedText?.substring(0, 50) || '',
-        thumbnailUri: validResults[0]?.uri || null,
-        results: validResults,
-      };
+      const newItems = [];
+      for (const res of validResults) {
+        const payload = {
+          sourceLanguage: res.detectedLanguage || 'Unknown',
+          targetLanguage: res.targetLanguage || targetLang,
+          originalText: res.extractedText,
+          translatedText: res.translatedText,
+        };
+        const response = await translationService.saveTranslation(payload);
+        if (response.data && response.data.translation) {
+           newItems.push(response.data.translation);
+        }
+      }
 
-      const updatedHistory = [session, ...history].slice(0, MAX_HISTORY);
-      setHistory(updatedHistory);
-      await AsyncStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(updatedHistory));
-    } catch (_) {}
+      if (newItems.length > 0) {
+        setHistory(prev => [...newItems, ...prev].slice(0, MAX_HISTORY));
+      }
+    } catch (err) {
+      console.error('Error saving translation history:', err);
+    }
   };
 
   const pickFromCamera = async () => {
@@ -457,12 +473,11 @@ export default function ImageTranslatorScreen({ navigation }) {
           </View>
           <ScrollView contentContainerStyle={{ padding: 20 }}>
             {history.map(session => (
-              <GlassCard key={session.id} style={{ marginBottom: 12, padding: 12 }}>
+              <GlassCard key={session._id || session.id} style={{ marginBottom: 12, padding: 12 }}>
                 <View style={{ flexDirection: 'row' }}>
-                  {session.thumbnailUri && <Image source={{ uri: session.thumbnailUri }} style={{ width: 50, height: 50, borderRadius: 8, marginRight: 12 }} />}
                   <View style={{ flex: 1 }}>
-                    <Text style={[theme.typography.caption, { color: theme.colors.gold }]}>{session.sourceLang} → {session.targetLang}</Text>
-                    <Text style={[theme.typography.body, { color: theme.colors.ivory, marginTop: 4 }]} numberOfLines={1}>{session.preview}</Text>
+                    <Text style={[theme.typography.caption, { color: theme.colors.gold }]}>{session.sourceLanguage} → {session.targetLanguage}</Text>
+                    <Text style={[theme.typography.body, { color: theme.colors.ivory, marginTop: 4 }]} numberOfLines={1}>{session.translatedText}</Text>
                   </View>
                 </View>
               </GlassCard>

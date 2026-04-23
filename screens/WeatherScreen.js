@@ -22,7 +22,7 @@ import PressableGoldButton from '../components/ui/PressableGoldButton';
 const { width } = Dimensions.get('window');
 
 // ⚠️ Your OpenWeatherMap API key
-const API_KEY = '';
+const API_KEY = '4f3e0fffe917327b826ee8237770c49c';
 
 const WEATHER_ICONS = {
   Clear: 'sunny',
