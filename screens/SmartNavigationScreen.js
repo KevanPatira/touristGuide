@@ -49,6 +49,7 @@ export default function SmartNavigationScreen({ route }) {
   const [highlightedPlace, setHighlightedPlace] = useState(null);
   const [searchLoading, setSearchLoading]   = useState(false);
   const [nearbyStops, setNearbyStops]       = useState([]);
+  const [destStops, setDestStops]             = useState([]);
 
   const mapRef       = useRef(null);
   const inputRef     = useRef(null);
@@ -147,6 +148,30 @@ export default function SmartNavigationScreen({ route }) {
     } catch (e) { console.warn('Nearby transport error:', e.message); }
   };
 
+  // ── Nearby transport to DESTINATION ────────────────────────
+  const fetchDestTransport = async (lat, lon) => {
+    try {
+      const query = `[out:json];(node["highway"="bus_stop"](around:1500,${lat},${lon});node["railway"="station"](around:2000,${lat},${lon});node["station"="subway"](around:2000,${lat},${lon}););out;`;
+      const res = await axios.get('https://overpass-api.de/api/interpreter', {
+        params: { data: query },
+        headers: { 'User-Agent': 'SmartNavApp/1.0', 'Accept': 'application/json' },
+      });
+      const elements = res.data?.elements || [];
+      const stops = elements.filter(el => el.tags && el.tags.name).map(el => {
+        const isBus = el.tags.highway === 'bus_stop';
+        return {
+          id: el.id, lat: el.lat, lon: el.lon,
+          type: isBus ? 'bus' : 'metro',
+          name: el.tags.name,
+        };
+      });
+      setDestStops(stops);
+    } catch (e) {
+      console.warn('Dest transport error:', e.message);
+      setDestStops([]);
+    }
+  };
+
   // ── Recent searches ───────────────────────────────────────
   const loadRecent = async () => {
     try {
@@ -161,14 +186,13 @@ export default function SmartNavigationScreen({ route }) {
     try { await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(updated)); } catch (_) {}
   };
 
-  // ── Nominatim Search (Free, letter-by-letter) ─────────────
+  // ── Nominatim Search (OpenStreetMap) ───────────────────
   const handleSearch = (text) => {
     setSearchText(text);
     if (!text.trim()) { setSuggestions([]); setSearchLoading(false); return; }
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     setSearchLoading(true);
 
-    // Wait until at least 3 chars to reduce Nominatim load
     if (text.trim().length < 3) { setSearchLoading(false); return; }
 
     searchTimeout.current = setTimeout(async () => {
@@ -178,21 +202,15 @@ export default function SmartNavigationScreen({ route }) {
           format: 'json',
           limit: 7,
           addressdetails: 1,
-          // Bias results toward user location if available
           ...(userLocation && {
             viewbox: `${userLocation.longitude - 0.5},${userLocation.latitude + 0.5},${userLocation.longitude + 0.5},${userLocation.latitude - 0.5}`,
-            bounded: 0, // 0 = prefer but don't restrict to viewbox
+            bounded: 0,
           }),
         };
         const res = await axios.get('https://nominatim.openstreetmap.org/search', {
           params,
-          headers: {
-            // Required by Nominatim policy
-            'User-Agent': 'SmartNavApp/1.0',
-            'Accept-Language': 'en',
-          },
+          headers: { 'User-Agent': 'SmartNavApp/1.0', 'Accept-Language': 'en' },
         });
-
         if (res.data?.length > 0) {
           setSuggestions(res.data.map(item => {
             const parts = item.display_name.split(', ');
@@ -213,7 +231,7 @@ export default function SmartNavigationScreen({ route }) {
         setSuggestions([]);
       }
       setSearchLoading(false);
-    }, 600); // 600ms debounce — respects Nominatim 1 req/sec limit
+    }, 600);
   };
 
   // ── Select place ──────────────────────────────────────────
@@ -239,12 +257,18 @@ export default function SmartNavigationScreen({ route }) {
     }, 400);
   };
 
-  // ── OSRM Route (Free, open source) ───────────────────────
-  // Public OSRM demo supports: driving, foot, bicycle
-  // We fetch driving + foot separately for accurate results.
+  // ── OSRM Route (free, open-source) ───────────────────────
+  // routing.openstreetmap.de hosts SEPARATE servers for car and foot profiles,
+  // unlike router.project-osrm.org which only has the car profile.
+  // This gives truly different routes and realistic walk vs drive times.
+  const OSRM_SERVERS = {
+    driving: 'https://routing.openstreetmap.de/routed-car',
+    foot:    'https://routing.openstreetmap.de/routed-foot',
+  };
 
   const fetchOSRM = async (profile, place) => {
-    const url = `https://router.project-osrm.org/route/v1/${profile}/${userLocation.longitude},${userLocation.latitude};${place.lng},${place.lat}?overview=full&geometries=geojson&alternatives=false`;
+    const server = OSRM_SERVERS[profile] || OSRM_SERVERS.driving;
+    const url = `${server}/route/v1/${profile}/${userLocation.longitude},${userLocation.latitude};${place.lng},${place.lat}?overview=full&geometries=geojson&alternatives=false`;
     const res = await axios.get(url);
     const r = res.data.routes[0];
     const km = r.distance / 1000;
@@ -261,11 +285,15 @@ export default function SmartNavigationScreen({ route }) {
     setAllRoutes(null);
     setRoutePolylines({});
     setCabPrice(null);
+    setDestStops([]);
+
+    // Fetch transport stops near destination
+    fetchDestTransport(place.lat, place.lng);
 
     const routes = {}, polylines = {};
 
     try {
-      // Fetch both profiles in parallel for speed
+      // Fetch driving + walking in parallel — different OSRM profiles
       const [driveData, walkData] = await Promise.all([
         fetchOSRM('driving', place),
         fetchOSRM('foot', place),
@@ -279,8 +307,8 @@ export default function SmartNavigationScreen({ route }) {
       };
       polylines.driving = driveData.coords;
 
-      // Walking — OSRM 'foot' profile uses pedestrian paths,
-      // footways, and ~5 km/h walking speed realistically
+      // Walking — OSRM 'foot' profile uses pedestrian paths
+      // and ~5 km/h walking speed (much slower than driving)
       routes.walking = {
         distance: `${walkData.km.toFixed(1)} km`,
         duration: fmtTime(walkData.mins),
@@ -290,7 +318,7 @@ export default function SmartNavigationScreen({ route }) {
 
     } catch (e) {
       console.warn('OSRM route error:', e.message);
-      // Straight-line fallback for both modes
+      // Straight-line fallback
       const fallbackCoords = [userLocation, { latitude: place.lat, longitude: place.lng }];
       for (const m of MODES) {
         routes[m.key] = { distance: 'N/A', duration: 'N/A', km: 0 };
@@ -374,6 +402,7 @@ export default function SmartNavigationScreen({ route }) {
         {/* Route line — bold for car, dotted for walk */}
         {destination && userLocation && (
           <Polyline
+            key={activeMode}
             coordinates={routePolylines[activeMode] || [userLocation, destination]}
             strokeColor={MODES.find(m => m.key === activeMode)?.color || '#ff7a45'}
             strokeWidth={activeMode === 'driving' ? 5 : 3}
@@ -482,7 +511,7 @@ export default function SmartNavigationScreen({ route }) {
             <View style={styles.hintBox}>
               <Ionicons name="map" size={28} color="#2a3352" />
               <Text style={styles.hintText}>Search any place worldwide</Text>
-              <Text style={styles.hintSub}>Powered by OpenStreetMap · Free</Text>
+              <Text style={styles.hintSub}>Powered by OpenStreetMap</Text>
             </View>
           )}
         </View>
@@ -536,16 +565,37 @@ export default function SmartNavigationScreen({ route }) {
                 </TouchableOpacity>
               </View>
 
-              {/* Nearby transport summary */}
-              {nearbyStops.length > 0 && (
-                <View style={styles.nearbyRow}>
-                  <Ionicons name="bus-outline" size={15} color="#2196F3" />
-                  <Text style={styles.nearbyText}>
-                    {nearbyStops.filter(s => s.type === 'bus').length} Bus stop
-                    {nearbyStops.filter(s => s.type === 'metro').length > 0
-                      ? `  •  ${nearbyStops.filter(s => s.type === 'metro').length} Metro nearby`
-                      : ' nearby'}
-                  </Text>
+              {/* Nearby transport to destination */}
+              {destStops.length > 0 && (
+                <View style={styles.nearbySection}>
+                  {/* Nearest bus stop */}
+                  {destStops.filter(s => s.type === 'bus').length > 0 && (
+                    <View style={styles.nearbyStopRow}>
+                      <View style={[styles.nearbyStopIcon, { backgroundColor: '#2196F322' }]}>
+                        <Ionicons name="bus-outline" size={16} color="#2196F3" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.nearbyStopName} numberOfLines={1}>
+                          {destStops.filter(s => s.type === 'bus')[0].name}
+                        </Text>
+                        <Text style={styles.nearbyStopSub}>Nearest bus stop</Text>
+                      </View>
+                    </View>
+                  )}
+                  {/* Nearest metro station */}
+                  {destStops.filter(s => s.type === 'metro').length > 0 && (
+                    <View style={styles.nearbyStopRow}>
+                      <View style={[styles.nearbyStopIcon, { backgroundColor: '#E91E6322' }]}>
+                        <Ionicons name="train-outline" size={16} color="#E91E63" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.nearbyStopName} numberOfLines={1}>
+                          {destStops.filter(s => s.type === 'metro')[0].name}
+                        </Text>
+                        <Text style={styles.nearbyStopSub}>Nearest metro station</Text>
+                      </View>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -659,9 +709,11 @@ const styles = StyleSheet.create({
   hintSub: { color: '#2a3352', fontSize: 12 },
 
   bottomCard: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
+    position: 'absolute', bottom: 100, left: 0, right: 0,
     backgroundColor: '#161b2b', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 30,
+    borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
+    marginHorizontal: 10,
+    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20,
     shadowColor: '#000', shadowOpacity: 0.5,
     shadowOffset: { width: 0, height: -4 }, shadowRadius: 12, elevation: 10,
   },
@@ -680,8 +732,11 @@ const styles = StyleSheet.create({
   transportTime: { color: '#fff', fontSize: 18, fontWeight: '800' },
   transportDist: { color: '#aaa', fontSize: 12, marginTop: 2 },
   transportLabel: { color: '#666', fontSize: 11, fontWeight: '600', marginTop: 4 },
-  nearbyRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  nearbyText: { color: '#888', fontSize: 12 },
+  nearbySection: { marginBottom: 10, gap: 8 },
+  nearbyStopRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#1f2740', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  nearbyStopIcon: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  nearbyStopName: { color: '#ddd', fontSize: 13, fontWeight: '600' },
+  nearbyStopSub: { color: '#777', fontSize: 11, marginTop: 1 },
   cabCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: '#1f2740', borderRadius: 16, padding: 14,
@@ -694,9 +749,10 @@ const styles = StyleSheet.create({
   cabNote: { color: '#666', fontSize: 10, marginTop: 2 },
 
   highlightCard: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: '#161b2b', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 34,
+    position: 'absolute', bottom: 100, left: 0, right: 0,
+    backgroundColor: '#161b2b', borderRadius: 24,
+    marginHorizontal: 10,
+    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 20,
     shadowColor: '#000', shadowOpacity: 0.5,
     shadowOffset: { width: 0, height: -4 }, shadowRadius: 12, elevation: 10,
   },
