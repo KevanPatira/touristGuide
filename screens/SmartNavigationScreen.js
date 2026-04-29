@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Keyboard, FlatList, Platform,
+  ActivityIndicator, Keyboard, FlatList, Platform, Linking, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline } from 'react-native-maps';
@@ -299,10 +299,11 @@ export default function SmartNavigationScreen({ route }) {
         fetchOSRM('foot', place),
       ]);
 
-      // Driving — OSRM accounts for road types & speed limits
+      // Driving — Bangalore traffic assumption: 41 mins per 10 km (4.1 mins/km)
+      const adjustedDriveMins = driveData.km * 4.1;
       routes.driving = {
         distance: `${driveData.km.toFixed(1)} km`,
-        duration: fmtTime(driveData.mins),
+        duration: fmtTime(adjustedDriveMins),
         km: driveData.km,
       };
       polylines.driving = driveData.coords;
@@ -349,6 +350,24 @@ export default function SmartNavigationScreen({ route }) {
     setDestination(null); setDestPlace(null);
     setSearchText(''); setAllRoutes(null);
     setRoutePolylines({}); setCabPrice(null);
+  };
+
+  // ── Open Google Maps with directions ───────────────────────
+  const openInGoogleMaps = (mode) => {
+    if (!userLocation || !destination) return;
+    const origin = `${userLocation.latitude},${userLocation.longitude}`;
+    const dest = `${destination.latitude},${destination.longitude}`;
+    const travelMode = mode === 'driving' ? 'driving' : 'walking';
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=${travelMode}`;
+    Linking.canOpenURL(url).then((supported) => {
+      if (supported) {
+        Linking.openURL(url);
+      } else {
+        Alert.alert('Google Maps not available', 'Please install Google Maps to use turn-by-turn navigation.');
+      }
+    }).catch(() => {
+      Alert.alert('Error', 'Could not open Google Maps.');
+    });
   };
 
   // ── Highlighted text ──────────────────────────────────────
@@ -541,7 +560,10 @@ export default function SmartNavigationScreen({ route }) {
                 {/* Walk */}
                 <TouchableOpacity
                   style={[styles.transportCard, activeMode === 'walking' && styles.transportCardActive]}
-                  onPress={() => setActiveMode('walking')}
+                  onPress={() => {
+                    setActiveMode('walking');
+                    openInGoogleMaps('walking');
+                  }}
                 >
                   <View style={[styles.transportIcon, { backgroundColor: '#4CAF5022' }]}>
                     <Ionicons name="walk-outline" size={22} color="#4CAF50" />
@@ -549,12 +571,19 @@ export default function SmartNavigationScreen({ route }) {
                   <Text style={styles.transportTime}>{allRoutes.walking?.duration}</Text>
                   <Text style={styles.transportDist}>{allRoutes.walking?.distance}</Text>
                   <Text style={styles.transportLabel}>Walk</Text>
+                  <View style={styles.navigateHintRow}>
+                    <Ionicons name="open-outline" size={10} color="#4CAF50" />
+                    <Text style={[styles.navigateHint, { color: '#4CAF50' }]}>Google Maps</Text>
+                  </View>
                 </TouchableOpacity>
 
                 {/* Car */}
                 <TouchableOpacity
                   style={[styles.transportCard, activeMode === 'driving' && styles.transportCardActive]}
-                  onPress={() => setActiveMode('driving')}
+                  onPress={() => {
+                    setActiveMode('driving');
+                    openInGoogleMaps('driving');
+                  }}
                 >
                   <View style={[styles.transportIcon, { backgroundColor: '#FF980022' }]}>
                     <Ionicons name="car-sport-outline" size={22} color="#FF9800" />
@@ -562,13 +591,50 @@ export default function SmartNavigationScreen({ route }) {
                   <Text style={styles.transportTime}>{allRoutes.driving?.duration}</Text>
                   <Text style={styles.transportDist}>{allRoutes.driving?.distance}</Text>
                   <Text style={styles.transportLabel}>Car</Text>
+                  <View style={styles.navigateHintRow}>
+                    <Ionicons name="open-outline" size={10} color="#FF9800" />
+                    <Text style={[styles.navigateHint, { color: '#FF9800' }]}>Google Maps</Text>
+                  </View>
                 </TouchableOpacity>
               </View>
 
-              {/* Nearby transport to destination */}
+              {/* Nearby transport to CURRENT LOCATION */}
+              {nearbyStops.length > 0 && (
+                <View style={styles.nearbySection}>
+                  <Text style={styles.transitSectionTitle}>📌 Near Your Location</Text>
+                  {nearbyStops.filter(s => s.type === 'bus').length > 0 && (
+                    <View style={styles.nearbyStopRow}>
+                      <View style={[styles.nearbyStopIcon, { backgroundColor: '#2196F322' }]}>
+                        <Ionicons name="bus-outline" size={16} color="#2196F3" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.nearbyStopName} numberOfLines={1}>
+                          {nearbyStops.filter(s => s.type === 'bus')[0].name}
+                        </Text>
+                        <Text style={styles.nearbyStopSub}>Nearest bus stop</Text>
+                      </View>
+                    </View>
+                  )}
+                  {nearbyStops.filter(s => s.type === 'metro').length > 0 && (
+                    <View style={styles.nearbyStopRow}>
+                      <View style={[styles.nearbyStopIcon, { backgroundColor: '#E91E6322' }]}>
+                        <Ionicons name="train-outline" size={16} color="#E91E63" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.nearbyStopName} numberOfLines={1}>
+                          {nearbyStops.filter(s => s.type === 'metro')[0].name}
+                        </Text>
+                        <Text style={styles.nearbyStopSub}>Nearest metro station</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Nearby transport to DESTINATION */}
               {destStops.length > 0 && (
                 <View style={styles.nearbySection}>
-                  {/* Nearest bus stop */}
+                  <Text style={styles.transitSectionTitle}>📍 Near Destination</Text>
                   {destStops.filter(s => s.type === 'bus').length > 0 && (
                     <View style={styles.nearbyStopRow}>
                       <View style={[styles.nearbyStopIcon, { backgroundColor: '#2196F322' }]}>
@@ -582,7 +648,6 @@ export default function SmartNavigationScreen({ route }) {
                       </View>
                     </View>
                   )}
-                  {/* Nearest metro station */}
                   {destStops.filter(s => s.type === 'metro').length > 0 && (
                     <View style={styles.nearbyStopRow}>
                       <View style={[styles.nearbyStopIcon, { backgroundColor: '#E91E6322' }]}>
@@ -737,6 +802,9 @@ const styles = StyleSheet.create({
   nearbyStopIcon: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   nearbyStopName: { color: '#ddd', fontSize: 13, fontWeight: '600' },
   nearbyStopSub: { color: '#777', fontSize: 11, marginTop: 1 },
+  transitSectionTitle: { color: '#999', fontSize: 12, fontWeight: '700', letterSpacing: 0.5, marginBottom: 2 },
+  navigateHintRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 6 },
+  navigateHint: { fontSize: 10, fontWeight: '600' },
   cabCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: '#1f2740', borderRadius: 16, padding: 14,
