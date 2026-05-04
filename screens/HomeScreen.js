@@ -1,337 +1,563 @@
 // screens/HomeScreen.js
-import React, { useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
-
 import {
   View,
   Text,
   StyleSheet,
-  TextInput,
-  FlatList,
   TouchableOpacity,
-  Modal,
-  TouchableWithoutFeedback,
+  ImageBackground,
+  ScrollView,
+  Dimensions,
+  Animated,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../constants/ThemeContext';
+import { useAuth } from '../constants/AuthContext';
+import useNotifications from '../hooks/useNotifications';
 
-// data for the quick tools
+import FloatingParticles from '../components/ui/FloatingParticles';
+import GoldShimmerText from '../components/ui/GoldShimmerText';
+import GlassCard from '../components/ui/GlassCard';
+import AnimatedHeroCard from '../components/ui/AnimatedHeroCard';
+import TypingText from '../components/ui/TypingText';
+import AnimatedCounter from '../components/ui/AnimatedCounter';
+import GradientDivider from '../components/ui/GradientDivider';
+import PulsingDot from '../components/ui/PulsingDot';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+
+// ── Hero Carousel Slides ─────────────────────────────
+const heroSlides = [
+  {
+    image: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=800&q=70',
+    title: 'Discover India',
+    subtitle: 'Explore 320+ iconic destinations across 32 states',
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&q=70',
+    title: 'Paris, France',
+    subtitle: 'The City of Light awaits your adventure',
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=800&q=70',
+    title: 'Japan',
+    subtitle: 'Where cherry blossoms meet ancient temples',
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=70',
+    title: 'Tropical Paradise',
+    subtitle: 'Find serenity on pristine beaches',
+  },
+];
+
+// ── Tool Data ────────────────────────────────────────
 const tools = [
-  { id: '1', title: 'Image Translator', icon: 'image' },
-  { id: '2', title: 'Voice Translator', icon: 'mic' },
-  { id: '3', title: 'Smart Navigation', icon: 'map' },
-  { id: '4', title: 'Currency Converter', icon: 'cash' },
-  { id: '5', title: 'Weather Forecast', icon: 'cloud' },
-  { id: '6', title: 'Emergency SOS', icon: 'alert' },
+  { id: '1', title: 'Image Translator', icon: 'image', gradient: ['#C9A84C20', '#C9A84C10'] },
+  { id: '2', title: 'Voice Translator', icon: 'mic', gradient: ['#3B82F620', '#3B82F610'] },
+  { id: '3', title: 'Smart Navigation', icon: 'map', gradient: ['#10B98120', '#10B98110'] },
+  { id: '4', title: 'Currency Converter', icon: 'cash', gradient: ['#F59E0B20', '#F59E0B10'] },
+  { id: '5', title: 'Weather Forecast', icon: 'cloud', gradient: ['#6366F120', '#6366F110'] },
+  { id: '6', title: 'Emergency SOS', icon: 'alert', gradient: ['#EF444420', '#EF444410'] },
+  { id: '7', title: 'AI Assistant', icon: 'sparkles', gradient: ['#8B5CF620', '#8B5CF610'] },
 ];
 
-// data for recently visited cities
-const recentCities = ['Paris', 'Tokyo', 'Dubai', 'New York'];
+const TOOL_NAV = {
+  'Image Translator': 'ImageTranslator',
+  'Voice Translator': 'VoiceTranslator',
+  'Smart Navigation': 'SmartNavigation',
+  'Currency Converter': 'CurrencyConverter',
+  'Weather Forecast': 'Weather',
+  'Emergency SOS': 'Emergency',
+  'AI Assistant': 'AIChat',
+};
 
-const NOTIFICATIONS = [
-  { id: '1', icon: 'checkmark-circle', color: '#4CAF50', title: 'Welcome to TouristGuide!', time: 'Just now', read: false },
-  { id: '2', icon: 'earth', color: '#03A9F4', title: '320+ Indian places now available in Explore', time: '2h ago', read: false },
-  { id: '3', icon: 'navigate', color: '#ff7a45', title: 'Smart Navigation updated with new features', time: '1d ago', read: true },
-  { id: '4', icon: 'shield-checkmark', color: '#9C27B0', title: 'Your account is secured', time: '2d ago', read: true },
+const TOOL_COLORS = {
+  'Image Translator': '#C9A84C',
+  'Voice Translator': '#3B82F6',
+  'Smart Navigation': '#10B981',
+  'Currency Converter': '#F59E0B',
+  'Weather Forecast': '#6366F1',
+  'Emergency SOS': '#EF4444',
+  'AI Assistant': '#8B5CF6',
+};
+
+// ── Destination Mood Board ───────────────────────────
+const recentCities = [
+  {
+    name: 'Jaipur',
+    image: 'https://images.unsplash.com/photo-1599661046289-e31897846e41?w=400&q=80',
+    tag: 'Heritage',
+    rating: '4.8',
+    trending: true,
+  },
+  {
+    name: 'Goa',
+    image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=400&q=80',
+    tag: 'Beach',
+    rating: '4.6',
+    trending: true,
+  },
+  {
+    name: 'Manali',
+    image: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=400&q=80',
+    tag: 'Nature',
+    rating: '4.7',
+    trending: false,
+  },
+  {
+    name: 'Varanasi',
+    image: 'https://images.unsplash.com/photo-1561361513-2d000a50f0dc?w=400&q=80',
+    tag: 'Temple',
+    rating: '4.5',
+    trending: false,
+  },
+  {
+    name: 'Kerala',
+    image: 'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=400&q=80',
+    tag: 'Nature',
+    rating: '4.9',
+    trending: true,
+  },
 ];
 
-// small reusable card for each tool
-function FeatureCard({ icon, title, onPress }) {
+// ── Inspirational Quotes ─────────────────────────────
+const travelQuotes = [
+  'Discover hidden gems around every corner',
+  'Navigate the world with confidence',
+  'Every journey tells a story',
+  'Explore. Dream. Discover.',
+];
+
+// (Removed - using real notification system via useNotifications hook)
+
+// ── Greeting helper ──────────────────────────────────
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return { text: 'Good Morning', emoji: '☀️' };
+  if (hour < 17) return { text: 'Good Afternoon', emoji: '🌤️' };
+  if (hour < 21) return { text: 'Good Evening', emoji: '🌅' };
+  return { text: 'Good Night', emoji: '🌙' };
+}
+
+// ══════════════════════════════════════════════════════
+// COMPONENTS
+// ══════════════════════════════════════════════════════
+
+function FeatureCard({ icon, title, onPress, index }) {
+  const { theme } = useTheme();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const iconColor = TOOL_COLORS[title] || theme.colors.gold;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        delay: index * 80,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        delay: index * 80,
+        speed: 14,
+        bounciness: 4,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index]);
+
   return (
-    <TouchableOpacity style={styles.toolCard} onPress={onPress}>
-      <Ionicons name={icon} size={26} color="#ff7a45" />
-      <Text style={styles.toolTitle}>{title}</Text>
-    </TouchableOpacity>
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+      <GlassCard style={styles.toolCard} onPress={onPress}>
+        <View style={[styles.iconWrapper, { backgroundColor: iconColor + '18' }]}>
+          <Ionicons name={icon} size={24} color={iconColor} />
+        </View>
+        <Text style={[theme.typography.label, styles.toolTitle, { color: theme.colors.ivory }]}>
+          {title}
+        </Text>
+        <Ionicons name="chevron-forward" size={14} color={theme.colors.goldMuted} style={styles.arrowIcon} />
+      </GlassCard>
+    </Animated.View>
   );
 }
 
-// card for each recently visited city
-function CityCard({ name }) {
+function CityCard({ city, index }) {
+  const { theme } = useTheme();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(40)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        delay: index * 120,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        delay: index * 120,
+        speed: 12,
+        bounciness: 5,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index]);
+
   return (
-    <View style={styles.cityCard}>
-      <Ionicons name="location" size={18} color="#ff7a45" />
-      <Text style={styles.cityName}>{name}</Text>
-      <Text style={styles.citySubtitle}>3 spots visited</Text>
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateX: slideAnim }] }}>
+      <TouchableOpacity activeOpacity={0.85}>
+        <ImageBackground
+          source={{ uri: city.image }}
+          style={styles.cityCard}
+          imageStyle={{ borderRadius: 18 }}
+        >
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.85)']}
+            style={styles.cityCardOverlay}
+          >
+            {/* Trending badge */}
+            {city.trending && (
+              <View style={styles.trendingBadge}>
+                <Ionicons name="flame" size={12} color="#FF6B35" />
+                <Text style={styles.trendingText}>Trending</Text>
+              </View>
+            )}
+
+            {/* Rating */}
+            <View style={styles.ratingRow}>
+              <Ionicons name="star" size={12} color="#FFD700" />
+              <Text style={[theme.typography.caption, { color: '#FFD700', marginLeft: 4 }]}>
+                {city.rating}
+              </Text>
+            </View>
+
+            <Text style={[theme.typography.displayM, styles.cityName, { color: '#fff' }]}>
+              {city.name}
+            </Text>
+            <View style={[styles.cityTag, { backgroundColor: theme.colors.gold + '30' }]}>
+              <Text style={[theme.typography.caption, { color: theme.colors.goldLight, fontSize: 10 }]}>
+                {city.tag}
+              </Text>
+            </View>
+          </LinearGradient>
+        </ImageBackground>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+function StatItem({ value, suffix, label, delay }) {
+  const { theme } = useTheme();
+  return (
+    <View style={styles.statItem}>
+      <AnimatedCounter
+        target={value}
+        suffix={suffix}
+        duration={2000}
+        delay={delay}
+        style={[theme.typography.displayM, { color: theme.colors.gold }]}
+      />
+      <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 2 }]}>
+        {label}
+      </Text>
     </View>
   );
 }
 
+// ══════════════════════════════════════════════════════
+// MAIN SCREEN
+// ══════════════════════════════════════════════════════
+
 export default function HomeScreen() {
   const navigation = useNavigation();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState(NOTIFICATIONS);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const markAllRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
-
-  const renderTool = ({ item }) => {
-    const map = {
-      'Image Translator': 'ImageTranslator',
-      'Voice Translator': 'VoiceTranslator',
-      'Smart Navigation': 'SmartNavigation',
-      'Currency Converter': 'CurrencyConverter',
-      'Weather Forecast': 'Weather',
-      'Emergency SOS': 'Emergency',
-    };
-
-    return (
-      <FeatureCard
-        icon={item.icon}
-        title={item.title}
-        onPress={() => navigation.navigate(map[item.title])}
-      />
-    );
-  };
-
-  const renderCity = ({ item }) => <CityCard name={item} />;
+  const { theme } = useTheme();
+  const { user } = useAuth();
+  const { unreadCount } = useNotifications(user?.uid);
+  const greeting = getGreeting();
 
   return (
     <View style={styles.container}>
-      {/* top header */}
-      <View style={styles.headerArea}>
-        <View style={styles.headerTop}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>Good Morning 🌤️</Text>
-            <Text style={styles.heading}>Where to next?</Text>
-          </View>
-          {/* Notification bell */}
+      {/* ── BACKGROUND ───────────────────────────────── */}
+      <LinearGradient
+        colors={[theme.colors.obsidian, '#0A0F1C', theme.colors.deepNavy]}
+        style={StyleSheet.absoluteFill}
+      />
+      <FloatingParticles count={18} color={theme.colors.borderGold} />
+
+      {/* ── FIXED HEADER BAR — stays pinned on scroll ── */}
+      <View style={[styles.fixedHeaderBar, { backgroundColor: 'rgba(10, 15, 28, 0.95)', borderBottomColor: theme.colors.borderGold }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={[theme.typography.caption, { color: theme.colors.emerald, marginBottom: 2 }]}>
+            {greeting.text} {greeting.emoji}
+          </Text>
+          <GoldShimmerText
+            text="Where to next?"
+            style={theme.typography.displayL}
+            delay={300}
+          />
+        </View>
+
+        {/* Icon row — AI + Notification, same size, same level */}
+        <View style={styles.headerIconRow}>
           <TouchableOpacity
-            style={styles.bellButton}
-            onPress={() => setShowNotifications(true)}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('AIChat')}
+            style={[styles.headerIconBtn, {
+              backgroundColor: theme.colors.glassBg,
+              borderColor: theme.colors.glassStroke,
+              borderWidth: 1,
+            }]}
           >
-            <Ionicons name="notifications-outline" size={24} color="#fff" />
+            <Ionicons name="chatbubble-ellipses" size={20} color={theme.colors.gold} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.headerIconBtn, {
+              backgroundColor: theme.colors.glassBg,
+              borderColor: theme.colors.glassStroke,
+              borderWidth: 1,
+            }]}
+            onPress={() => navigation.navigate('Notifications')}
+          >
+            <Ionicons name="notifications-outline" size={20} color={theme.colors.gold} />
             {unreadCount > 0 && (
-              <View style={styles.bellBadge}>
+              <View style={[styles.bellBadge, { backgroundColor: theme.colors.crimson }]}>
                 <Text style={styles.bellBadgeText}>{unreadCount}</Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
-        <Text style={styles.subheading}>
-          Explore the world with confidence.
-        </Text>
+      </View>
 
-        {/* search bar */}
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={20} color="#888" />
-          <TextInput
-            placeholder="Search destinations..."
-            placeholderTextColor="#777"
-            style={styles.searchInput}
+      {/* ── SCROLLABLE CONTENT ────────────────────────── */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Typing subtitle — scrolls with content */}
+        <View style={{ paddingHorizontal: 20, marginTop: 8, marginBottom: 8 }}>
+          <TypingText
+            phrases={travelQuotes}
+            typingSpeed={50}
+            pauseDuration={2500}
+            style={[theme.typography.body, { color: theme.colors.parchment }]}
           />
         </View>
-      </View>
 
-      {/* main content */}
-      <View style={styles.content}>
-        <Text style={styles.sectionTitle}>Quick Tools</Text>
-        <FlatList
-          data={tools}
-          numColumns={3}
-          keyExtractor={(item) => item.id}
-          renderItem={renderTool}
-          columnWrapperStyle={{ justifyContent: 'space-between' }}
-          showsVerticalScrollIndicator={false}
-        />
-
-        {/* orange promo banner */}
-        <View style={styles.banner}>
-          <Text style={styles.bannerTitle}>Travel Smart 🌍</Text>
-          <Text style={styles.bannerText}>
-            Offline mode now available. Try it on your next trip.
-          </Text>
+        {/* ── Hero Carousel ──────────────────────────── */}
+        <View style={{ marginTop: 8 }}>
+          <AnimatedHeroCard
+            slides={heroSlides}
+            height={240}
+            interval={4500}
+          />
         </View>
 
-        {/* recently visited */}
-        <Text style={styles.sectionTitle}>Recently Visited</Text>
-        <FlatList
-          data={recentCities}
-          horizontal
-          keyExtractor={(item) => item}
-          renderItem={renderCity}
-          showsHorizontalScrollIndicator={false}
-        />
-      </View>
+        {/* ── Stats Ribbon ────────────────────────────── */}
+        <View style={[styles.statsRibbon, {
+          backgroundColor: theme.colors.glassBg,
+          borderColor: theme.colors.glassStroke,
+        }]}>
+          <StatItem value={320} suffix="+" label="Places" delay={400} />
+          <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
+          <StatItem value={32} suffix="" label="States" delay={600} />
+          <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
+          <StatItem value={7} suffix="" label="Tools" delay={800} />
+        </View>
 
-      {/* Notification Modal */}
-      <Modal
-        visible={showNotifications}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowNotifications(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowNotifications(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.notifPanel}>
-                <View style={styles.notifHeader}>
-                  <Text style={styles.notifTitle}>Notifications</Text>
-                  {unreadCount > 0 && (
-                    <TouchableOpacity onPress={markAllRead}>
-                      <Text style={styles.markReadText}>Mark all read</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                {notifications.map(n => (
-                  <View key={n.id} style={[styles.notifRow, !n.read && styles.notifUnread]}>
-                    <View style={[styles.notifIcon, { backgroundColor: n.color + '22' }]}>
-                      <Ionicons name={n.icon} size={18} color={n.color} />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.notifText}>{n.title}</Text>
-                      <Text style={styles.notifTime}>{n.time}</Text>
-                    </View>
-                    {!n.read && <View style={styles.unreadDot} />}
-                  </View>
-                ))}
-              </View>
-            </TouchableWithoutFeedback>
+        <GradientDivider icon="compass" label="Essential Tools" />
+
+        {/* ── Quick Tools Grid ────────────────────────── */}
+        <View style={styles.toolsGrid}>
+          {tools.map((item, index) => (
+            <FeatureCard
+              key={item.id}
+              icon={item.icon}
+              title={item.title}
+              index={index}
+              onPress={() => navigation.navigate(TOOL_NAV[item.title])}
+            />
+          ))}
+        </View>
+
+        <GradientDivider icon="heart" label="Destinations" />
+
+        {/* ── Destination Mood Board ──────────────────── */}
+        <View style={styles.moodBoardHeader}>
+          <Text style={[theme.typography.headingS, { color: theme.colors.ivory }]}>
+            Trending Destinations
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <PulsingDot size={6} color={theme.colors.emerald} />
+            <Text style={[theme.typography.caption, { color: theme.colors.emerald }]}>Live</Text>
           </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingRight: 20 }}
+        >
+          {recentCities.map((city, index) => (
+            <CityCard key={city.name} city={city} index={index} />
+          ))}
+        </ScrollView>
+
+        <View style={{ height: 100 }} />
+      </ScrollView>
+
+
     </View>
   );
 }
 
+// ══════════════════════════════════════════════════════
+// STYLES
+// ══════════════════════════════════════════════════════
+
+const TOOL_GAP = 12;
+const TOOL_CARD_W = (SCREEN_W - 40 - TOOL_GAP) / 2;
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#050b18' },
-
-  headerArea: {
-    paddingTop: 60,
+  container: { flex: 1 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 20 },
+  fixedHeaderBar: {
+    paddingTop: Platform.OS === 'ios' ? 56 : 44,
     paddingHorizontal: 20,
-    paddingBottom: 20,
-    backgroundColor: '#131b33',
-  },
-  greeting: { color: '#ffffff', fontSize: 14, marginBottom: 4 },
-  heading: { color: '#ffffff', fontSize: 26, fontWeight: '700' },
-  subheading: { color: '#b0b4c3', fontSize: 13, marginTop: 4 },
-
-  searchBox: {
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1f2740',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  searchInput: {
-    marginLeft: 8,
-    color: '#ffffff',
-    flex: 1,
-    fontSize: 14,
-  },
-
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-  },
-  sectionTitle: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 10,
-    marginTop: 4,
-  },
-
-  toolCard: {
-    backgroundColor: '#161b2b',
-    width: '31%',
-    borderRadius: 18,
-    paddingVertical: 18,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  toolTitle: {
-    color: '#ffffff',
-    fontSize: 12,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-
-  banner: {
-    marginTop: 10,
-    backgroundColor: '#ff7a45',
-    borderRadius: 18,
-    padding: 16,
-  },
-  bannerTitle: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
-  bannerText: { color: '#fff5ec', fontSize: 12, marginTop: 4 },
-
-  cityCard: {
-    backgroundColor: '#161b2b',
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    marginRight: 10,
-    alignItems: 'flex-start',
-  },
-  cityName: {
-    color: '#ffffff',
-    fontSize: 14,
-    marginTop: 6,
-    fontWeight: '600',
-  },
-  citySubtitle: { color: '#b0b4c3', fontSize: 11, marginTop: 2 },
-
-  // Header top row
-  headerTop: {
+    paddingBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    zIndex: 100,
+    borderBottomWidth: 1,
   },
-
-  // Bell
-  bellButton: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: '#1f2740',
+  headerIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  headerIconBtn: {
+    width: 40, height: 40, borderRadius: 20,
     justifyContent: 'center', alignItems: 'center',
   },
   bellBadge: {
-    position: 'absolute', top: 6, right: 6,
-    backgroundColor: '#ff4444', borderRadius: 10,
-    minWidth: 18, height: 18,
+    position: 'absolute', top: 4, right: 6,
+    borderRadius: 10, minWidth: 18, height: 18,
     justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: 4,
   },
   bellBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
 
-  // Notification modal
-  modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-start', paddingTop: 110,
+  // Stats Ribbon
+  statsRibbon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    marginHorizontal: 20,
+    marginTop: 20,
+    paddingVertical: 16,
+    borderRadius: 16,
+    borderWidth: 1,
   },
-  notifPanel: {
-    marginHorizontal: 16,
-    backgroundColor: '#161b2b',
-    borderRadius: 20, padding: 16,
-    shadowColor: '#000', shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: 4 }, shadowRadius: 16, elevation: 12,
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
   },
-  notifHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 14,
+  statDivider: {
+    width: 1,
+    height: 30,
   },
-  notifTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  markReadText: { color: '#ff7a45', fontSize: 12, fontWeight: '600' },
-  notifRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#252a3f',
+
+  // Tools Grid
+  toolsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    gap: TOOL_GAP,
   },
-  notifUnread: { backgroundColor: '#1a2240', borderRadius: 12, paddingHorizontal: 8, marginHorizontal: -8 },
-  notifIcon: {
-    width: 36, height: 36, borderRadius: 18,
+  toolCard: {
+    width: TOOL_CARD_W,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    minHeight: 120,
+  },
+  iconWrapper: {
+    width: 44, height: 44, borderRadius: 14,
     justifyContent: 'center', alignItems: 'center',
   },
-  notifText: { color: '#ddd', fontSize: 13, fontWeight: '500' },
-  notifTime: { color: '#666', fontSize: 11, marginTop: 2 },
-  unreadDot: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: '#ff7a45', marginLeft: 8,
+  toolTitle: {
+    marginTop: 16,
+    fontSize: 11,
+    lineHeight: 16,
   },
+  arrowIcon: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+  },
+
+  // Mood board
+  moodBoardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  cityCard: {
+    width: 180,
+    height: 240,
+    marginLeft: 16,
+    borderRadius: 18,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  cityCardOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: 16,
+    borderRadius: 18,
+  },
+  trendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 53, 0.2)',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    gap: 4,
+    marginBottom: 'auto',
+  },
+  trendingText: {
+    color: '#FF6B35',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  cityName: {
+    marginBottom: 6,
+  },
+  cityTag: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+
+
 });

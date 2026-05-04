@@ -1,5 +1,5 @@
 // screens/ImageTranslatorScreen.js - OCR.space + OpenRouter Translation
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,48 +11,171 @@ import {
   ActivityIndicator,
   Platform,
   Dimensions,
+  Animated,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import s from './styles/ImageTranslatorScreen.styles';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 
+import { useTheme } from '../constants/ThemeContext';
+import GlassCard from '../components/ui/GlassCard';
+import PressableGoldButton from '../components/ui/PressableGoldButton';
+import LanguagePill from '../components/ui/LanguagePill';
+import Toast from '../components/ui/Toast';
+
+// ══════════════════════════════════════════════════════════════════════
+//  API KEYS
+// ══════════════════════════════════════════════════════════════════════
+
 // Free OCR.space API key
-const OCR_API_KEY = 'K85864488288957';
+const OCR_API_KEY = process.env.EXPO_PUBLIC_OCR_API_KEY;
 
 // OpenRouter API
-const OPENROUTER_API_KEY = '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';
+const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY;
 const OPENROUTER_MODEL = 'openai/gpt-oss-120b:free';
 
-// All major Indian languages + English
+// ══════════════════════════════════════════════════════════════════════
+//  LANGUAGES — All major Indian languages + English
+// ══════════════════════════════════════════════════════════════════════
+
 const LANGUAGES = [
-  { name: 'English',    native: 'English' },
-  { name: 'Hindi',      native: 'हिंदी' },
-  { name: 'Bengali',    native: 'বাংলা' },
-  { name: 'Telugu',     native: 'తెలుగు' },
-  { name: 'Marathi',    native: 'मराठी' },
-  { name: 'Tamil',      native: 'தமிழ்' },
-  { name: 'Urdu',       native: 'اردو' },
-  { name: 'Gujarati',   native: 'ગુજરાતી' },
-  { name: 'Kannada',    native: 'ಕನ್ನಡ' },
-  { name: 'Malayalam',  native: 'മലയാളം' },
-  { name: 'Odia',       native: 'ଓଡ଼ିଆ' },
-  { name: 'Punjabi',    native: 'ਪੰਜਾਬੀ' },
-  { name: 'Assamese',   native: 'অসমীয়া' },
+  { name: 'English',   native: 'English',  flag: '🇬🇧' },
+  { name: 'Hindi',     native: 'हिंदी',     flag: '🇮🇳' },
+  { name: 'Bengali',   native: 'বাংলা',     flag: '🇮🇳' },
+  { name: 'Telugu',    native: 'తెలుగు',    flag: '🇮🇳' },
+  { name: 'Marathi',   native: 'मराठी',     flag: '🇮🇳' },
+  { name: 'Tamil',     native: 'தமிழ்',    flag: '🇮🇳' },
+  { name: 'Urdu',      native: 'اردو',     flag: '🇵🇰' },
+  { name: 'Gujarati',  native: 'ગુજરાતી',  flag: '🇮🇳' },
+  { name: 'Kannada',   native: 'ಕನ್ನಡ',    flag: '🇮🇳' },
+  { name: 'Malayalam', native: 'മലയാളം',   flag: '🇮🇳' },
+  { name: 'Odia',      native: 'ଓଡ଼ିଆ',    flag: '🇮🇳' },
+  { name: 'Punjabi',   native: 'ਪੰਜਾਬੀ',   flag: '🇮🇳' },
+  { name: 'Assamese',  native: 'অসমীয়া',  flag: '🇮🇳' },
 ];
 
-// Helper: convert image URI to base64
+// ══════════════════════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════════════════════
+
 const uriToBase64 = async (uri) => {
-  const base64 = await FileSystem.readAsStringAsync(uri, {
+  return FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
-  return base64;
 };
 
-const { width } = Dimensions.get('window');
+const { width: SCREEN_W } = Dimensions.get('window');
 
-export default function ImageTranslatorScreen() {
+// ══════════════════════════════════════════════════════════════════════
+//  OCR.space — text extraction
+// ══════════════════════════════════════════════════════════════════════
+
+const extractTextWithOCR = async (base64Data) => {
+  const formData = new FormData();
+  formData.append('base64Image', `data:image/jpeg;base64,${base64Data}`);
+  formData.append('language', 'eng');
+  formData.append('isOverlayRequired', 'false');
+  formData.append('OCREngine', '2');
+
+  const response = await fetch('https://api.ocr.space/parse/image', {
+    method: 'POST',
+    headers: { apikey: OCR_API_KEY },
+    body: formData,
+  });
+
+  const result = await response.json();
+
+  if (result.IsErroredOnProcessing) {
+    console.log('OCR Error:', result.ErrorMessage);
+    return null;
+  }
+  if (result.ParsedResults && result.ParsedResults.length > 0) {
+    const text = result.ParsedResults.map((r) => r.ParsedText)
+      .join('\n')
+      .trim();
+    if (text) return text;
+  }
+  return null;
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  OpenRouter — translation
+// ══════════════════════════════════════════════════════════════════════
+
+const translateWithOpenRouter = async (text, lang) => {
+  const response = await fetch(
+    'https://openrouter.ai/api/v1/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://touristguide.app',
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content: `You are a professional translator. Translate the given text into ${lang}. Return ONLY the translated text, nothing else. Do not add any explanations, prefixes, or conversational filler.`,
+          },
+          { role: 'user', content: text },
+        ],
+        max_tokens: 1500,
+      }),
+    }
+  );
+
+  const result = await response.json();
+  if (result.error) return null;
+  if (result.choices && result.choices[0] && result.choices[0].message) {
+    return result.choices[0].message.content.trim();
+  }
+  return null;
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  PULSING ICON  (themed placeholder animation)
+// ══════════════════════════════════════════════════════════════════════
+
+function PulsingIcon({ name, size, color }) {
+  const anim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, {
+          toValue: 1.12,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(anim, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [anim]);
+
+  return (
+    <Animated.View style={{ transform: [{ scale: anim }] }}>
+      <Ionicons name={name} size={size} color={color} />
+    </Animated.View>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  MAIN COMPONENT
+// ══════════════════════════════════════════════════════════════════════
+
+export default function ImageTranslatorScreen({ navigation }) {
+  const { theme } = useTheme();
+  const toastRef = useRef(null);
+
   const [image, setImage] = useState(null);
   const [imageBase64, setImageBase64] = useState(null);
   const [extractedText, setExtractedText] = useState('');
@@ -60,10 +183,11 @@ export default function ImageTranslatorScreen() {
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [targetLang, setTargetLang] = useState('Hindi');
-  // step: 1=pick image, 2=choose language/preview, 3=result
+  // step: 1 = pick image, 2 = preview + choose language, 3 = result
   const [step, setStep] = useState(1);
 
-  const handleImageResult = async (result) => {
+  // ─── Image result handler ───
+  const handleImageResult = useCallback(async (result) => {
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const asset = result.assets[0];
       setImage(asset.uri);
@@ -84,10 +208,8 @@ export default function ImageTranslatorScreen() {
         Alert.alert('Error', 'Could not read image data. Please try again.');
       }
     }
-  };
+  }, []);
 
-  // Image Picker options:
-  // Removed aspect ratio to allow a fully resizable crop box and zoom/pan functionality natively.
   const pickOptions = {
     mediaTypes: ['images'],
     allowsEditing: true,
@@ -98,108 +220,60 @@ export default function ImageTranslatorScreen() {
   const pickFromCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Camera access is required to take photos.');
+      Alert.alert(
+        'Permission needed',
+        'Camera access is required to take photos.'
+      );
       return;
     }
-    let result = await ImagePicker.launchCameraAsync(pickOptions);
+    const result = await ImagePicker.launchCameraAsync(pickOptions);
     await handleImageResult(result);
   };
 
   const pickFromGallery = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const { status } =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Gallery access is required to pick photos.');
+      Alert.alert(
+        'Permission needed',
+        'Gallery access is required to pick photos.'
+      );
       return;
     }
-    let result = await ImagePicker.launchImageLibraryAsync(pickOptions);
+    const result = await ImagePicker.launchImageLibraryAsync(pickOptions);
     await handleImageResult(result);
   };
 
-  const extractTextFromImage = async () => {
-    if (!imageBase64) return null;
-    setLoadingMessage('Extracting text from image...');
-    try {
-      const formData = new FormData();
-      formData.append('base64Image', `data:image/jpeg;base64,${imageBase64}`);
-      formData.append('language', 'eng');
-      formData.append('isOverlayRequired', 'false');
-      formData.append('OCREngine', '2');
-
-      const response = await fetch('https://api.ocr.space/parse/image', {
-        method: 'POST',
-        headers: { 'apikey': OCR_API_KEY },
-        body: formData,
-      });
-
-      const result = await response.json();
-      if (result.IsErroredOnProcessing) {
-        console.log('OCR Error:', result.ErrorMessage);
-        return null;
-      }
-      if (result.ParsedResults && result.ParsedResults.length > 0) {
-        const text = result.ParsedResults.map(r => r.ParsedText).join('\n').trim();
-        if (text) return text;
-      }
-      return null;
-    } catch (error) {
-      console.log('OCR fetch error:', error);
-      return null;
-    }
-  };
-
-  const translateWithOpenRouter = async (text, lang) => {
-    setLoadingMessage(`Translating to ${lang}...`);
-    try {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://touristguide.app',
-        },
-        body: JSON.stringify({
-          model: OPENROUTER_MODEL,
-          messages: [
-            {
-              role: 'system',
-              content: `You are a professional translator. Translate the given text into ${lang}. Return ONLY the translated text, nothing else. Do not add any explanations, prefixes, or conversational filler.`,
-            },
-            { role: 'user', content: text },
-          ],
-          max_tokens: 1500,
-        }),
-      });
-
-      const result = await response.json();
-      if (result.error) return null;
-      if (result.choices && result.choices[0] && result.choices[0].message) {
-        return result.choices[0].message.content.trim();
-      }
-      return null;
-    } catch (error) {
-      console.log('Translation error:', error);
-      return null;
-    }
-  };
-
+  // ─── Extract + Translate pipeline ───
   const extractAndTranslate = async () => {
     setLoading(true);
     setExtractedText('');
     setTranslatedText('');
+    setLoadingMessage('Extracting text from image...');
 
-    const text = await extractTextFromImage();
-    if (!text) {
-      Alert.alert('No text found', 'Could not extract any text from the image. Try a clearer image with visible text.');
-      setLoading(false);
-      return;
-    }
-    setExtractedText(text);
+    try {
+      const text = await extractTextWithOCR(imageBase64);
+      if (!text) {
+        Alert.alert(
+          'No text found',
+          'Could not extract any text from the image. Try a clearer image with visible text.'
+        );
+        setLoading(false);
+        setLoadingMessage('');
+        return;
+      }
+      setExtractedText(text);
 
-    const translation = await translateWithOpenRouter(text, targetLang);
-    if (translation) {
-      setTranslatedText(translation);
-    } else {
-      setTranslatedText('Translation failed. Please try again.');
+      setLoadingMessage(`Translating to ${targetLang}...`);
+      const translation = await translateWithOpenRouter(text, targetLang);
+      if (translation) {
+        setTranslatedText(translation);
+      } else {
+        setTranslatedText('Translation failed. Please try again.');
+      }
+    } catch (err) {
+      console.log('Pipeline error:', err);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
     }
 
     setLoading(false);
@@ -207,16 +281,22 @@ export default function ImageTranslatorScreen() {
     setStep(3);
   };
 
+  // ─── Re-translate with a new language (from results step) ───
   const retranslate = async (newLang) => {
-    if (!extractedText || extractedText === 'No text found in image.') return;
+    if (!extractedText) return;
     setTargetLang(newLang);
     setLoading(true);
     setLoadingMessage(`Translating to ${newLang}...`);
 
-    const translation = await translateWithOpenRouter(extractedText, newLang);
-    if (translation) {
-      setTranslatedText(translation);
-    } else {
+    try {
+      const translation = await translateWithOpenRouter(extractedText, newLang);
+      if (translation) {
+        setTranslatedText(translation);
+      } else {
+        setTranslatedText('Translation failed. Please try again.');
+      }
+    } catch (err) {
+      console.log('Retranslate error:', err);
       setTranslatedText('Translation failed. Please try again.');
     }
 
@@ -224,11 +304,13 @@ export default function ImageTranslatorScreen() {
     setLoadingMessage('');
   };
 
+  // ─── Clipboard ───
   const copyToClipboard = async (text) => {
     await Clipboard.setStringAsync(text);
-    Alert.alert('Copied!', 'Text copied to clipboard successfully.');
+    toastRef.current?.show('Copied to clipboard!');
   };
 
+  // ─── Reset ───
   const reset = () => {
     setImage(null);
     setImageBase64(null);
@@ -238,472 +320,402 @@ export default function ImageTranslatorScreen() {
     setStep(1);
   };
 
+  // ─── Current language object ───
+  const currentLangObj = LANGUAGES.find((l) => l.name === targetLang) || LANGUAGES[1];
+
   return (
-    <LinearGradient colors={['#0f172a', '#1e293b', '#0f172a']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Image Translator</Text>
-          <Text style={styles.subtitle}>
-            {step === 1 && '📸 Capture or pick an image to translate'}
-            {step === 2 && '🌐 Preview & select target language'}
-            {step === 3 && '🎉 Translation complete!'}
-          </Text>
-        </View>
+    <View style={{ flex: 1, backgroundColor: theme.colors.obsidian }}>
+      {/* ════════ HEADER ════════ */}
+      <View style={s.header}>
+        <TouchableOpacity
+          onPress={() => navigation?.goBack?.()}
+          style={{ padding: 8 }}
+        >
+          <Ionicons name="arrow-back" size={24} color={theme.colors.gold} />
+        </TouchableOpacity>
 
-        {/* ═══════ Step 1: Pick image ═══════ */}
+        <Text
+          style={[
+            theme.typography.displayM,
+            { color: theme.colors.ivory, flex: 1, textAlign: 'center' },
+          ]}
+        >
+          Image Translator
+        </Text>
+
+        {/* Placeholder to keep title centred */}
+        <View style={{ width: 40 }} />
+      </View>
+
+      {/* ════════ SUB-HEADER ════════ */}
+      <View style={s.subHeader}>
+        <Text style={[theme.typography.caption, { color: theme.colors.parchment, textAlign: 'center' }]}>
+          {step === 1 && '📸  Capture or pick an image to translate'}
+          {step === 2 && '🌐  Preview & select target language'}
+          {step === 3 && '🎉  Translation complete!'}
+        </Text>
+      </View>
+
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+        {/* ═══════════════════════════════════════════════════════════════
+            STEP 1 — Pick an image
+        ═══════════════════════════════════════════════════════════════ */}
         {step === 1 && (
-          <View style={styles.pickContainer}>
-            <View style={styles.pickCard}>
-              <View style={styles.iconCircle}>
-                <Ionicons name="scan-outline" size={50} color="#38bdf8" />
-              </View>
-              <Text style={styles.pickTitle}>Scan & Translate</Text>
-              <Text style={styles.pickDesc}>
-                Instantly extract and translate text from any image using AI.
-              </Text>
-
-              <TouchableOpacity style={styles.cameraButton} onPress={pickFromCamera}>
-                <LinearGradient colors={['#38bdf8', '#0ea5e9']} style={styles.gradientButton} start={{x: 0, y: 0}} end={{x: 1, y: 1}}>
-                  <Ionicons name="camera" size={24} color="#fff" />
-                  <Text style={styles.bigButtonText}>Take a Picture</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.galleryButton} onPress={pickFromGallery}>
-                <View style={styles.outlineButton}>
-                  <Ionicons name="images" size={24} color="#38bdf8" />
-                  <Text style={styles.outlineButtonText}>Choose from Gallery</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* ═══════ Step 2: Image preview + Language selection ═══════ */}
-        {step === 2 && image && (
-          <View style={styles.stepContainer}>
-            <View style={styles.previewCard}>
-              <Image source={{ uri: image }} style={styles.imagePreview} resizeMode="contain" />
-              <TouchableOpacity style={styles.repickBtn} onPress={reset}>
-                <Ionicons name="refresh" size={18} color="#fff" />
-                <Text style={styles.repickBtnText}>Retake / Reselect</Text>
-              </TouchableOpacity>
+          <GlassCard style={{ padding: 30, alignItems: 'center' }}>
+            <View style={s.iconCircle}>
+              <PulsingIcon
+                name="scan-outline"
+                size={50}
+                color={theme.colors.gold}
+              />
             </View>
 
-            <Text style={styles.sectionTitle}>Translate To</Text>
-
-            <View style={styles.langGrid}>
-              {LANGUAGES.map((lang) => (
-                <TouchableOpacity
-                  key={lang.name}
-                  style={[
-                    styles.langChip,
-                    targetLang === lang.name && styles.langChipActive,
-                  ]}
-                  onPress={() => setTargetLang(lang.name)}
-                >
-                  <Text style={[styles.langChipText, targetLang === lang.name && styles.langChipTextActive]}>
-                    {lang.native}
-                  </Text>
-                  <Text style={[styles.langChipSubtext, targetLang === lang.name && styles.langChipSubtextActive]}>
-                    {lang.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TouchableOpacity
-              style={[styles.translateWrapper, loading && styles.disabled]}
-              onPress={extractAndTranslate}
-              disabled={loading}
+            <Text
+              style={[
+                theme.typography.displayS,
+                { color: theme.colors.ivory, marginBottom: 8 },
+              ]}
             >
-              <LinearGradient colors={loading ? ['#475569', '#334155'] : ['#38bdf8', '#0ea5e9']} style={styles.gradientButton} start={{x: 0, y: 0}} end={{x: 1, y: 1}}>
-                {loading ? (
-                  <>
-                    <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />
-                    <Text style={styles.translateBtnText}>{loadingMessage || 'PROCESSING...'}</Text>
-                  </>
-                ) : (
-                  <>
-                    <Ionicons name="language" size={24} color="#fff" style={{ marginRight: 10 }} />
-                    <Text style={styles.translateBtnText}>TRANSLATE TO {targetLang.toUpperCase()}</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+              Scan & Translate
+            </Text>
+            <Text
+              style={[
+                theme.typography.body,
+                {
+                  color: theme.colors.parchment,
+                  textAlign: 'center',
+                  marginBottom: 28,
+                },
+              ]}
+            >
+              Instantly extract and translate text from any image using AI.
+            </Text>
+
+            <PressableGoldButton
+              label="Take a Picture"
+              onPress={pickFromCamera}
+              icon={
+                <Ionicons
+                  name="camera"
+                  size={20}
+                  color={theme.colors.ivory}
+                />
+              }
+              style={{ width: '100%', marginBottom: 14 }}
+            />
+
+            <PressableGoldButton
+              label="Choose from Gallery"
+              variant="outline"
+              onPress={pickFromGallery}
+              icon={
+                <Ionicons
+                  name="images"
+                  size={20}
+                  color={theme.colors.gold}
+                />
+              }
+              style={{ width: '100%' }}
+            />
+          </GlassCard>
         )}
 
-        {/* ═══════ Step 3: Results ═══════ */}
-        {step === 3 && image && (
-          <View style={styles.stepContainer}>
-            {/* Translated Text Card (Primary Focus) */}
-            {translatedText ? (
-              <View style={[styles.resultCard, styles.translationCard]}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.headerTitleRow}>
-                    <Ionicons name="language" size={22} color="#10b981" />
-                    <Text style={[styles.cardTitle, { color: '#10b981' }]}>
-                      Translation ({LANGUAGES.find(l => l.name === targetLang)?.native})
-                    </Text>
-                  </View>
-                  <TouchableOpacity onPress={() => copyToClipboard(translatedText)} style={styles.copyBtn}>
-                    <Ionicons name="copy-outline" size={22} color="#10b981" />
-                  </TouchableOpacity>
-                </View>
-                {loading ? (
-                  <ActivityIndicator color="#10b981" size="large" style={{ marginVertical: 20 }} />
-                ) : (
-                  <Text style={styles.translatedResultText}>{translatedText}</Text>
-                )}
-              </View>
-            ) : null}
+        {/* ═══════════════════════════════════════════════════════════════
+            STEP 2 — Preview image + Language selection
+        ═══════════════════════════════════════════════════════════════ */}
+        {step === 2 && image && (
+          <>
+            {/* Image Preview */}
+            <GlassCard style={{ padding: 10, marginBottom: 20 }}>
+              <Image
+                source={{ uri: image }}
+                style={s.imagePreview}
+                resizeMode="contain"
+              />
+              <TouchableOpacity style={s.repickBtn} onPress={reset}>
+                <Ionicons name="refresh" size={16} color={theme.colors.ivory} />
+                <Text
+                  style={[
+                    theme.typography.caption,
+                    { color: theme.colors.ivory, marginLeft: 6 },
+                  ]}
+                >
+                  Retake / Reselect
+                </Text>
+              </TouchableOpacity>
+            </GlassCard>
 
-            {/* Original Extracted Text Card */}
-            <View style={styles.resultCard}>
-              <View style={styles.cardHeader}>
-                <View style={styles.headerTitleRow}>
-                  <Ionicons name="document-text" size={22} color="#38bdf8" />
-                  <Text style={styles.cardTitle}>Original Text</Text>
-                </View>
-                <TouchableOpacity onPress={() => copyToClipboard(extractedText)} style={styles.copyBtn}>
-                  <Ionicons name="copy-outline" size={22} color="#38bdf8" />
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.resultText}>{extractedText}</Text>
-            </View>
+            {/* Section title */}
+            <Text
+              style={[
+                theme.typography.headingS,
+                { color: theme.colors.ivory, marginBottom: 14, marginLeft: 4 },
+              ]}
+            >
+              Translate To
+            </Text>
 
-            {/* Try Another Language */}
-            <Text style={styles.retranslateTitle}>Translate to another language:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.retranslateScroll}>
-              <View style={styles.retranslateRow}>
-                {LANGUAGES.map((lang) => (
+            {/* Language grid */}
+            <View style={s.langGrid}>
+              {LANGUAGES.map((lang) => {
+                const isActive = targetLang === lang.name;
+                return (
                   <TouchableOpacity
                     key={lang.name}
-                    style={[styles.retranslateChip, targetLang === lang.name && styles.retranslateChipActive]}
-                    onPress={() => retranslate(lang.name)}
-                    disabled={loading}
+                    onPress={() => setTargetLang(lang.name)}
+                    style={[
+                      s.langChip,
+                      {
+                        borderColor: isActive
+                          ? theme.colors.gold
+                          : theme.colors.borderSilver,
+                        backgroundColor: isActive
+                          ? 'rgba(201, 168, 76, 0.12)'
+                          : theme.colors.glassBg,
+                      },
+                    ]}
                   >
-                    <Text style={[styles.retranslateText, targetLang === lang.name && styles.retranslateTextActive]}>
+                    <Text
+                      style={[
+                        theme.typography.headingS,
+                        {
+                          color: isActive
+                            ? theme.colors.gold
+                            : theme.colors.parchment,
+                          fontSize: 15,
+                        },
+                      ]}
+                    >
                       {lang.native}
                     </Text>
+                    <Text
+                      style={[
+                        theme.typography.caption,
+                        {
+                          color: isActive
+                            ? theme.colors.goldLight
+                            : theme.colors.ash,
+                          marginTop: 3,
+                        },
+                      ]}
+                    >
+                      {lang.name}
+                    </Text>
                   </TouchableOpacity>
-                ))}
+                );
+              })}
+            </View>
+
+            {/* Translate button */}
+            <PressableGoldButton
+              label={
+                loading
+                  ? loadingMessage || 'PROCESSING...'
+                  : `TRANSLATE TO ${targetLang.toUpperCase()}`
+              }
+              loading={loading}
+              disabled={loading}
+              onPress={extractAndTranslate}
+              icon={
+                !loading ? (
+                  <Ionicons
+                    name="language"
+                    size={20}
+                    color={theme.colors.ivory}
+                  />
+                ) : undefined
+              }
+              style={{ width: '100%', marginTop: 6 }}
+            />
+          </>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════
+            STEP 3 — Results
+        ═══════════════════════════════════════════════════════════════ */}
+        {step === 3 && image && (
+          <>
+            {/* ── Translated text card (primary focus) ── */}
+            {translatedText ? (
+              <GlassCard
+                style={{
+                  padding: 22,
+                  marginBottom: 18,
+                  borderColor: 'rgba(16, 185, 129, 0.35)',
+                }}
+              >
+                <View style={s.cardHeader}>
+                  <View style={s.headerTitleRow}>
+                    <Ionicons
+                      name="language"
+                      size={20}
+                      color={theme.colors.emerald}
+                    />
+                    <Text
+                      style={[
+                        theme.typography.headingS,
+                        { color: theme.colors.emerald, marginLeft: 8 },
+                      ]}
+                    >
+                      Translation ({currentLangObj.native})
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => copyToClipboard(translatedText)}
+                    style={{ padding: 4 }}
+                  >
+                    <Ionicons
+                      name="copy-outline"
+                      size={20}
+                      color={theme.colors.emerald}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {loading ? (
+                  <ActivityIndicator
+                    color={theme.colors.emerald}
+                    size="large"
+                    style={{ marginVertical: 20 }}
+                  />
+                ) : (
+                  <Text
+                    style={[
+                      theme.typography.displayS,
+                      {
+                        color: theme.colors.ivory,
+                        lineHeight: 30,
+                        marginTop: 4,
+                      },
+                    ]}
+                    selectable
+                  >
+                    {translatedText}
+                  </Text>
+                )}
+              </GlassCard>
+            ) : null}
+
+            {/* ── Original extracted text card ── */}
+            <GlassCard style={{ padding: 22, marginBottom: 18 }}>
+              <View style={s.cardHeader}>
+                <View style={s.headerTitleRow}>
+                  <Ionicons
+                    name="document-text"
+                    size={20}
+                    color={theme.colors.gold}
+                  />
+                  <Text
+                    style={[
+                      theme.typography.headingS,
+                      { color: theme.colors.gold, marginLeft: 8 },
+                    ]}
+                  >
+                    Original Text
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => copyToClipboard(extractedText)}
+                  style={{ padding: 4 }}
+                >
+                  <Ionicons
+                    name="copy-outline"
+                    size={20}
+                    color={theme.colors.gold}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <Text
+                style={[
+                  theme.typography.body,
+                  { color: theme.colors.parchment, lineHeight: 26 },
+                ]}
+                selectable
+              >
+                {extractedText}
+              </Text>
+            </GlassCard>
+
+            {/* ── Re-translate to another language ── */}
+            <Text
+              style={[
+                theme.typography.caption,
+                {
+                  color: theme.colors.parchment,
+                  marginBottom: 12,
+                  marginLeft: 4,
+                  letterSpacing: 0.8,
+                },
+              ]}
+            >
+              TRANSLATE TO ANOTHER LANGUAGE
+            </Text>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 24 }}
+            >
+              <View style={s.retranslateRow}>
+                {LANGUAGES.map((lang) => {
+                  const isActive = targetLang === lang.name;
+                  return (
+                    <TouchableOpacity
+                      key={lang.name}
+                      onPress={() => retranslate(lang.name)}
+                      disabled={loading}
+                      style={[
+                        s.retranslateChip,
+                        {
+                          borderColor: isActive
+                            ? theme.colors.gold
+                            : theme.colors.borderSilver,
+                          backgroundColor: isActive
+                            ? theme.colors.gold
+                            : theme.colors.glassBg,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          theme.typography.caption,
+                          {
+                            color: isActive
+                              ? theme.colors.obsidian
+                              : theme.colors.parchment,
+                            fontWeight: isActive ? '700' : '400',
+                            fontSize: 13,
+                          },
+                        ]}
+                      >
+                        {lang.native}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </ScrollView>
 
-            {/* Action buttons */}
-            <TouchableOpacity style={styles.newScanWrapper} onPress={reset}>
-               <LinearGradient colors={['#6366f1', '#4f46e5']} style={styles.gradientButton} start={{x: 0, y: 0}} end={{x: 1, y: 1}}>
-                <Ionicons name="scan" size={22} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={styles.actionBtnText}>Start New Scan</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+            {/* ── Start New Scan ── */}
+            <PressableGoldButton
+              label="Start New Scan"
+              variant="outline"
+              onPress={reset}
+              icon={
+                <Ionicons
+                  name="scan"
+                  size={20}
+                  color={theme.colors.gold}
+                />
+              }
+              style={{ width: '100%' }}
+            />
+          </>
         )}
       </ScrollView>
-    </LinearGradient>
+
+      <Toast ref={toastRef} />
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scrollContent: { paddingBottom: 40 },
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 70 : 50,
-    paddingBottom: 20,
-    alignItems: 'center',
-  },
-  title: {
-    color: '#fff',
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  subtitle: {
-    color: '#94a3b8',
-    fontSize: 15,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-
-  // ── Common ──
-  stepContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  gradientButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    borderRadius: 20,
-    width: '100%',
-  },
-
-  // ── Step 1 ──
-  pickContainer: {
-    paddingHorizontal: 20,
-    marginTop: 20,
-  },
-  pickCard: {
-    backgroundColor: 'rgba(30, 41, 59, 0.7)',
-    borderRadius: 28,
-    padding: 30,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  iconCircle: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  pickTitle: {
-    color: '#f8fafc',
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 10,
-  },
-  pickDesc: {
-    color: '#94a3b8',
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 22,
-  },
-  cameraButton: {
-    width: '100%',
-    marginBottom: 16,
-    borderRadius: 20,
-    shadowColor: '#38bdf8',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  galleryButton: {
-    width: '100%',
-  },
-  outlineButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(56, 189, 248, 0.3)',
-    backgroundColor: 'transparent',
-  },
-  outlineButtonText: {
-    color: '#38bdf8',
-    fontSize: 17,
-    fontWeight: '700',
-    marginLeft: 10,
-  },
-  bigButtonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
-    marginLeft: 10,
-  },
-
-  // ── Step 2 ──
-  previewCard: {
-    backgroundColor: 'rgba(30, 41, 59, 0.7)',
-    borderRadius: 24,
-    padding: 12,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  imagePreview: {
-    width: '100%',
-    height: 250,
-    borderRadius: 16,
-  },
-  repickBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'absolute',
-    bottom: 24,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-  },
-  repickBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  sectionTitle: {
-    color: '#f8fafc',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-    marginLeft: 4,
-  },
-  langGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 30,
-  },
-  langChip: {
-    backgroundColor: 'rgba(30, 41, 59, 0.8)',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    alignItems: 'center',
-    width: (width - 60) / 3, // 3 columns
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  langChipActive: {
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    borderColor: '#38bdf8',
-  },
-  langChipText: {
-    color: '#cbd5e1',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  langChipTextActive: {
-    color: '#38bdf8',
-  },
-  langChipSubtext: {
-    color: '#64748b',
-    fontSize: 11,
-    marginTop: 4,
-  },
-  langChipSubtextActive: {
-    color: '#7dd3fc',
-  },
-  translateWrapper: {
-    width: '100%',
-    borderRadius: 20,
-    shadowColor: '#0ea5e9',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  translateBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  disabled: {
-    opacity: 0.8,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-
-  // ── Step 3 ──
-  resultCard: {
-    backgroundColor: 'rgba(30, 41, 59, 0.7)',
-    borderRadius: 24,
-    padding: 24,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  translationCard: {
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-    backgroundColor: 'rgba(16, 185, 129, 0.05)',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  headerTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  cardTitle: {
-    color: '#38bdf8',
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 8,
-  },
-  copyBtn: {
-    padding: 4,
-  },
-  resultText: {
-    color: '#e2e8f0',
-    fontSize: 16,
-    lineHeight: 26,
-  },
-  translatedResultText: {
-    color: '#fff',
-    fontSize: 19,
-    lineHeight: 30,
-    fontWeight: '500',
-  },
-  retranslateTitle: {
-    color: '#94a3b8',
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 12,
-    marginLeft: 4,
-  },
-  retranslateScroll: {
-    marginBottom: 24,
-  },
-  retranslateRow: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 4,
-  },
-  retranslateChip: {
-    backgroundColor: 'rgba(30, 41, 59, 0.8)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  retranslateChipActive: {
-    backgroundColor: '#38bdf8',
-    borderColor: '#38bdf8',
-  },
-  retranslateText: {
-    color: '#cbd5e1',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  retranslateTextActive: {
-    color: '#0f172a',
-    fontWeight: '700',
-  },
-  newScanWrapper: {
-    width: '100%',
-    borderRadius: 20,
-    shadowColor: '#4f46e5',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  actionBtnText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
-  },
-});

@@ -2,45 +2,56 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Switch, Alert, KeyboardAvoidingView, Platform,
+  ScrollView, Alert, KeyboardAvoidingView, Platform, Image, ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+import { useTheme } from '../constants/ThemeContext';
+import { useAuth } from '../constants/AuthContext';
 
-const PROFILE_KEY = '@tg_profile';
-const PRIVACY_KEY = '@tg_privacy';
+import GlassCard from '../components/ui/GlassCard';
+import PressableGoldButton from '../components/ui/PressableGoldButton';
+import StaggerRevealText from '../components/ui/StaggerRevealText';
+import FloatingParticles from '../components/ui/FloatingParticles';
+import styles from './styles/ProfileScreen.styles';
 
 function SectionHeader({ icon, label, expanded, onToggle, danger }) {
+  const { theme } = useTheme();
   return (
-    <TouchableOpacity style={styles.row} onPress={onToggle} activeOpacity={0.7}>
-      <View style={[styles.rowIcon, danger && { backgroundColor: '#ff7a4518' }]}>
-        <Ionicons name={icon} size={18} color={danger ? '#ff7a45' : '#ff7a45'} />
+    <GlassCard style={[styles.sectionCard, expanded && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }]} onPress={onToggle} glowOnPress={false}>
+      <View style={styles.row}>
+        <View style={[styles.rowIcon, danger ? { backgroundColor: theme.colors.crimson + '22' } : { backgroundColor: theme.colors.copper + '22' }]}>
+          <Ionicons name={icon} size={18} color={danger ? theme.colors.crimson : theme.colors.copper} />
+        </View>
+        <Text style={[theme.typography.body, styles.rowText, danger ? { color: theme.colors.crimson, fontWeight: '600' } : { color: theme.colors.ivory }]}>
+          {label}
+        </Text>
+        <Ionicons
+          name={expanded ? 'chevron-down' : 'chevron-forward'}
+          size={18}
+          color={danger ? theme.colors.crimson : theme.colors.parchment}
+          style={{ marginLeft: 'auto' }}
+        />
       </View>
-      <Text style={[styles.rowText, danger && { color: '#ff7a45', fontWeight: '600' }]}>
-        {label}
-      </Text>
-      <Ionicons
-        name={expanded ? 'chevron-down' : 'chevron-forward'}
-        size={18}
-        color={danger ? '#ff7a45' : '#888'}
-        style={{ marginLeft: 'auto' }}
-      />
-    </TouchableOpacity>
+    </GlassCard>
   );
 }
 
-export default function ProfileScreen({ userEmail, userPassword, onLogout }) {
+export default function ProfileScreen({ navigation }) {
+  const { theme } = useTheme();
+  const { user, userProfile, updateUserProfile, logOut } = useAuth();
+
   // Profile data
+  const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
+  const [bio, setBio] = useState('');
   const [gender, setGender] = useState('');
   const [age, setAge] = useState('');
-  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [profileImage, setProfileImage] = useState(null);
+  
+  const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
-  // Privacy
-  const [isPublic, setIsPublic] = useState(false);
-  const [currentPw, setCurrentPw] = useState('');
-  const [newPw, setNewPw] = useState('');
-  const [confirmPw, setConfirmPw] = useState('');
 
   // Expanded sections
   const [expandedSection, setExpandedSection] = useState(null);
@@ -48,79 +59,60 @@ export default function ProfileScreen({ userEmail, userPassword, onLogout }) {
   // Gender options
   const genderOptions = ['Male', 'Female', 'Other'];
 
-  // Load profile
+  // Load profile from context
   useEffect(() => {
-    loadProfile();
-    loadPrivacy();
-  }, []);
+    if (userProfile) {
+      setDisplayName(userProfile.displayName || '');
+      setUsername(userProfile.username || '');
+      setBio(userProfile.bio || '');
+      setGender(userProfile.gender || '');
+      setAge(userProfile.age || '');
+    }
+  }, [userProfile]);
 
-  const loadProfile = async () => {
-    try {
-      const data = await AsyncStorage.getItem(PROFILE_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        setUsername(parsed.username || '');
-        setGender(parsed.gender || '');
-        setAge(parsed.age || '');
+  const handlePickDP = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+    });
+    
+    if (!result.canceled) {
+      const uri = result.assets[0].uri;
+      setProfileImage(uri);
+      
+      // Save local URI to profile (Storage requires Blaze plan)
+      try {
+        await updateUserProfile({ avatarUrl: uri });
+      } catch (error) {
+        Alert.alert('Error', 'Could not update profile picture.');
       }
-    } catch (_) {}
-    setProfileLoaded(true);
+    }
   };
 
   const saveProfile = async () => {
+    setSaving(true);
     try {
-      await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ username, gender, age }));
+      await updateUserProfile({
+        displayName,
+        username: username.toLowerCase().replace(/\s+/g, ''),
+        bio,
+        gender,
+        age
+      });
       Alert.alert('Saved', 'Profile updated successfully!');
     } catch (_) {
       Alert.alert('Error', 'Could not save profile.');
     }
+    setSaving(false);
   };
 
-  const loadPrivacy = async () => {
-    try {
-      const data = await AsyncStorage.getItem(PRIVACY_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        setIsPublic(parsed.isPublic || false);
-      }
-    } catch (_) {}
-  };
-
-  const togglePublic = async (val) => {
-    setIsPublic(val);
-    try {
-      await AsyncStorage.setItem(PRIVACY_KEY, JSON.stringify({ isPublic: val }));
-    } catch (_) {}
-  };
-
-  const handleChangePassword = () => {
-    if (!currentPw.trim()) {
-      Alert.alert('Error', 'Enter your current password');
-      return;
-    }
-    if (currentPw !== userPassword) {
-      Alert.alert('Error', 'Current password is incorrect');
-      return;
-    }
-    if (newPw.length < 6) {
-      Alert.alert('Error', 'New password must be at least 6 characters');
-      return;
-    }
-    if (newPw !== confirmPw) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
-    // In a real app this would call an API
-    Alert.alert('Success', 'Password changed! (Demo — will reset on restart)');
-    setCurrentPw('');
-    setNewPw('');
-    setConfirmPw('');
-  };
 
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Log Out', style: 'destructive', onPress: () => onLogout?.() },
+      { text: 'Log Out', style: 'destructive', onPress: async () => await logOut() },
     ]);
   };
 
@@ -128,16 +120,17 @@ export default function ProfileScreen({ userEmail, userPassword, onLogout }) {
     setExpandedSection(expandedSection === section ? null : section);
   };
 
-  // Initials for avatar
-  const initials = username
-    ? username.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-    : userEmail ? userEmail[0].toUpperCase() : '?';
+  const initials = displayName
+    ? displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+    : user?.email ? user.email[0].toUpperCase() : '?';
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.obsidian }]}>
+      <FloatingParticles count={5} />
+      
       {/* header */}
-      <View style={styles.headerArea}>
-        <Text style={styles.title}>Profile</Text>
+      <View style={[styles.headerArea, { backgroundColor: theme.colors.midnight }]}>
+        <StaggerRevealText text="Profile" style={[theme.typography.displayS, { color: theme.colors.gold, textAlign: 'center' }]} />
       </View>
 
       <KeyboardAvoidingView
@@ -151,43 +144,89 @@ export default function ProfileScreen({ userEmail, userPassword, onLogout }) {
         >
           {/* Avatar + info */}
           <View style={styles.avatarSection}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
-            <Text style={styles.name}>{username || 'Set your username'}</Text>
-            <Text style={styles.email}>{userEmail || 'No email'}</Text>
-            <View style={styles.publicBadge}>
+            <TouchableOpacity style={[styles.avatar, { backgroundColor: theme.colors.copper }]} onPress={handlePickDP} disabled={uploadingImage}>
+              {profileImage ? (
+                <Image source={{ uri: profileImage }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
+              {uploadingImage && (
+                <View style={styles.uploadOverlay}>
+                  <ActivityIndicator color={theme.colors.ivory} />
+                </View>
+              )}
+              <View style={[styles.cameraIcon, { backgroundColor: theme.colors.midnight, borderColor: theme.colors.obsidian }]}>
+                <Ionicons name="camera" size={16} color={theme.colors.ivory} />
+              </View>
+            </TouchableOpacity>
+
+            <Text style={[theme.typography.headingM, styles.name, { color: theme.colors.ivory }]}>
+              {userProfile?.displayName || 'Set your display name'}
+            </Text>
+            <Text style={[theme.typography.caption, styles.email, { color: theme.colors.parchment }]}>
+              @{userProfile?.username || 'username'}
+            </Text>
+
+            <View style={[styles.publicBadge, { backgroundColor: theme.colors.midnight }]}>
               <Ionicons
-                name={isPublic ? 'globe-outline' : 'lock-closed-outline'}
+                name="globe-outline"
                 size={12}
-                color={isPublic ? '#4CAF50' : '#888'}
+                color={theme.colors.emerald}
               />
-              <Text style={[styles.publicBadgeText, isPublic && { color: '#4CAF50' }]}>
-                {isPublic ? 'Public Profile' : 'Private Profile'}
+              <Text style={[theme.typography.caption, { color: theme.colors.emerald, fontSize: 11 }]}>
+                Public Profile
               </Text>
             </View>
           </View>
 
-          {/* Travel Stats */}
-          <View style={styles.statsCard}>
-            <Text style={styles.statsTitle}>Travel Stats</Text>
+          {/* Social Stats */}
+          <GlassCard style={styles.statsCard} glowOnPress={false}>
+            <Text style={[theme.typography.headingS, { color: theme.colors.ivory, marginBottom: 12 }]}>Travel & Connections</Text>
             <View style={styles.statsRow}>
               <View style={styles.statBox}>
-                <Text style={styles.statNumber}>8</Text>
-                <Text style={styles.statLabel}>States</Text>
+                <Text style={[theme.typography.displayM, { color: theme.colors.gold }]}>{userProfile?.postCount || 0}</Text>
+                <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>Posts</Text>
               </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statBox}>
-                <Text style={styles.statNumber}>24</Text>
-                <Text style={styles.statLabel}>Places</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statBox}>
-                <Text style={styles.statNumber}>21</Text>
-                <Text style={styles.statLabel}>Days</Text>
-              </View>
+              <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
+              
+              <TouchableOpacity 
+                style={styles.statBox} 
+                onPress={() => navigation.navigate('Followers', { userId: user.uid, tab: 'followers', displayName: userProfile?.displayName })}
+              >
+                <Text style={[theme.typography.displayM, { color: theme.colors.gold }]}>{userProfile?.followerCount || 0}</Text>
+                <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>Followers</Text>
+              </TouchableOpacity>
+              
+              <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
+              
+              <TouchableOpacity 
+                style={styles.statBox}
+                onPress={() => navigation.navigate('Followers', { userId: user.uid, tab: 'following', displayName: userProfile?.displayName })}  
+              >
+                <Text style={[theme.typography.displayM, { color: theme.colors.gold }]}>{userProfile?.followingCount || 0}</Text>
+                <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>Following</Text>
+              </TouchableOpacity>
             </View>
-          </View>
+          </GlassCard>
+
+          {/* Saved Posts */}
+          <TouchableOpacity 
+            style={{ marginBottom: 8 }} 
+            onPress={() => navigation.navigate('SavedPosts')}
+            activeOpacity={0.7}
+          >
+            <GlassCard style={styles.sectionCard} glowOnPress={false}>
+              <View style={styles.row}>
+                <View style={[styles.rowIcon, { backgroundColor: theme.colors.emerald + '22' }]}>
+                  <Ionicons name="bookmark-outline" size={18} color={theme.colors.emerald} />
+                </View>
+                <Text style={[theme.typography.body, styles.rowText, { color: theme.colors.ivory }]}>
+                  Saved Posts
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.parchment} style={{ marginLeft: 'auto' }} />
+              </View>
+            </GlassCard>
+          </TouchableOpacity>
 
           {/* ═══ Account Details ═══ */}
           <SectionHeader
@@ -197,52 +236,75 @@ export default function ProfileScreen({ userEmail, userPassword, onLogout }) {
             onToggle={() => toggleSection('account')}
           />
           {expandedSection === 'account' && (
-            <View style={styles.expandedBox}>
+            <GlassCard style={[styles.expandedBox, { borderTopLeftRadius: 0, borderTopRightRadius: 0 }]} glowOnPress={false}>
+              
+              <Text style={styles.fieldLabel}>Display Name</Text>
+              <TextInput
+                style={[theme.typography.body, styles.fieldInput, { backgroundColor: theme.colors.midnight, color: theme.colors.ivory }]}
+                placeholder="Ex: Kevan Patira"
+                placeholderTextColor={theme.colors.parchment}
+                value={displayName}
+                onChangeText={setDisplayName}
+              />
+
               <Text style={styles.fieldLabel}>Username</Text>
               <TextInput
-                style={styles.fieldInput}
-                placeholder="Enter username"
-                placeholderTextColor="#555"
+                style={[theme.typography.body, styles.fieldInput, { backgroundColor: theme.colors.midnight, color: theme.colors.ivory }]}
+                placeholder="Ex: kevan_p"
+                placeholderTextColor={theme.colors.parchment}
                 value={username}
                 onChangeText={setUsername}
+                autoCapitalize="none"
+              />
+
+              <Text style={styles.fieldLabel}>Bio</Text>
+              <TextInput
+                style={[theme.typography.body, styles.fieldInput, { backgroundColor: theme.colors.midnight, color: theme.colors.ivory, height: 80 }]}
+                placeholder="Tell us about your travels..."
+                placeholderTextColor={theme.colors.parchment}
+                value={bio}
+                onChangeText={setBio}
+                multiline
               />
 
               <Text style={styles.fieldLabel}>Gender</Text>
               <View style={styles.genderRow}>
-                {genderOptions.map(g => (
-                  <TouchableOpacity
-                    key={g}
-                    style={[styles.genderChip, gender === g && styles.genderChipActive]}
-                    onPress={() => setGender(g)}
-                  >
-                    <Text style={[styles.genderText, gender === g && styles.genderTextActive]}>
-                      {g}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {genderOptions.map(g => {
+                  const isActive = gender === g;
+                  return (
+                    <TouchableOpacity
+                      key={g}
+                      style={[styles.genderChip, { backgroundColor: theme.colors.midnight, borderColor: isActive ? theme.colors.gold : theme.colors.borderSilver }]}
+                      onPress={() => setGender(g)}
+                    >
+                      <Text style={[theme.typography.caption, { color: isActive ? theme.colors.gold : theme.colors.parchment }]}>
+                        {g}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <Text style={styles.fieldLabel}>Age</Text>
               <TextInput
-                style={styles.fieldInput}
-                placeholder="Enter age"
-                placeholderTextColor="#555"
+                style={[theme.typography.body, styles.fieldInput, { backgroundColor: theme.colors.midnight, color: theme.colors.ivory }]}
+                placeholder="Age"
+                placeholderTextColor={theme.colors.parchment}
                 value={age}
                 onChangeText={setAge}
                 keyboardType="number-pad"
                 maxLength={3}
               />
 
-              <Text style={styles.fieldLabel}>Email</Text>
-              <View style={[styles.fieldInput, { backgroundColor: '#0d1221' }]}>
-                <Text style={{ color: '#888', fontSize: 14 }}>{userEmail || 'Not set'}</Text>
-              </View>
-
-              <TouchableOpacity style={styles.saveButton} onPress={saveProfile}>
-                <Ionicons name="checkmark-circle" size={18} color="#fff" />
-                <Text style={styles.saveButtonText}>Save Profile</Text>
-              </TouchableOpacity>
-            </View>
+              <PressableGoldButton
+                label="Save Profile"
+                onPress={saveProfile}
+                loading={saving}
+                disabled={saving || uploadingImage}
+                icon={!saving && <Ionicons name="checkmark-circle" size={18} color={theme.colors.ivory} />}
+                style={{ marginTop: 16 }}
+              />
+            </GlassCard>
           )}
 
           {/* ═══ Privacy & Security ═══ */}
@@ -253,57 +315,18 @@ export default function ProfileScreen({ userEmail, userPassword, onLogout }) {
             onToggle={() => toggleSection('privacy')}
           />
           {expandedSection === 'privacy' && (
-            <View style={styles.expandedBox}>
-              {/* Public/Private toggle */}
-              <View style={styles.toggleRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.toggleLabel}>Public Profile</Text>
-                  <Text style={styles.toggleDesc}>
-                    Others can see your travel stats and profile
-                  </Text>
-                </View>
-                <Switch
-                  value={isPublic}
-                  onValueChange={togglePublic}
-                  trackColor={{ false: '#2b3350', true: '#ff7a4566' }}
-                  thumbColor={isPublic ? '#ff7a45' : '#888'}
-                />
-              </View>
-
-              {/* Change Password */}
-              <View style={styles.divider} />
-              <Text style={styles.pwSectionTitle}>Change Password</Text>
-
-              <TextInput
-                style={styles.fieldInput}
-                placeholder="Current password"
-                placeholderTextColor="#555"
-                value={currentPw}
-                onChangeText={setCurrentPw}
-                secureTextEntry
+            <GlassCard style={[styles.expandedBox, { borderTopLeftRadius: 0, borderTopRightRadius: 0 }]} glowOnPress={false}>
+              <Text style={[theme.typography.body, { color: theme.colors.parchment, marginBottom: 12 }]}>
+                All accounts are public. Anyone can see your posts. Follow requests still require your approval.
+              </Text>
+              <Text style={[theme.typography.headingS, { color: theme.colors.ivory, marginBottom: 8 }]}>Follow Requests</Text>
+              <PressableGoldButton
+                label="View Requests"
+                variant="outline"
+                onPress={() => navigation.navigate('Followers', { userId: user.uid, tab: 'requests', displayName: userProfile?.displayName })}
+                icon={<Ionicons name="people-outline" size={16} color={theme.colors.gold} />}
               />
-              <TextInput
-                style={styles.fieldInput}
-                placeholder="New password (min 6 chars)"
-                placeholderTextColor="#555"
-                value={newPw}
-                onChangeText={setNewPw}
-                secureTextEntry
-              />
-              <TextInput
-                style={styles.fieldInput}
-                placeholder="Confirm new password"
-                placeholderTextColor="#555"
-                value={confirmPw}
-                onChangeText={setConfirmPw}
-                secureTextEntry
-              />
-
-              <TouchableOpacity style={styles.saveButton} onPress={handleChangePassword}>
-                <Ionicons name="lock-closed" size={16} color="#fff" />
-                <Text style={styles.saveButtonText}>Update Password</Text>
-              </TouchableOpacity>
-            </View>
+            </GlassCard>
           )}
 
           {/* ═══ Help & Support ═══ */}
@@ -314,15 +337,15 @@ export default function ProfileScreen({ userEmail, userPassword, onLogout }) {
             onToggle={() => toggleSection('help')}
           />
           {expandedSection === 'help' && (
-            <View style={styles.expandedBox}>
+            <GlassCard style={[styles.expandedBox, { borderTopLeftRadius: 0, borderTopRightRadius: 0 }]} glowOnPress={false}>
               <View style={styles.helpCard}>
-                <Ionicons name="construct-outline" size={28} color="#2b3350" />
-                <Text style={styles.helpTitle}>Coming Soon</Text>
-                <Text style={styles.helpDesc}>
+                <Ionicons name="construct-outline" size={32} color={theme.colors.gold} />
+                <Text style={[theme.typography.headingM, { color: theme.colors.gold, marginTop: 8 }]}>Coming Soon</Text>
+                <Text style={[theme.typography.body, { color: theme.colors.parchment, textAlign: 'center', marginTop: 4 }]}>
                   We're building a comprehensive help center. Stay tuned for FAQs, live chat, and more!
                 </Text>
               </View>
-            </View>
+            </GlassCard>
           )}
 
           {/* ═══ About ═══ */}
@@ -333,183 +356,44 @@ export default function ProfileScreen({ userEmail, userPassword, onLogout }) {
             onToggle={() => toggleSection('about')}
           />
           {expandedSection === 'about' && (
-            <View style={styles.expandedBox}>
-              <View style={styles.aboutRow}>
-                <Text style={styles.aboutLabel}>App Version</Text>
-                <Text style={styles.aboutValue}>1.0.0</Text>
+            <GlassCard style={[styles.expandedBox, { borderTopLeftRadius: 0, borderTopRightRadius: 0 }]} glowOnPress={false}>
+              <View style={[styles.aboutRow, { borderBottomColor: theme.colors.borderSilver }]}>
+                <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>App Version</Text>
+                <Text style={[theme.typography.body, { color: theme.colors.ivory }]}>1.1.0</Text>
               </View>
-              <View style={styles.aboutRow}>
-                <Text style={styles.aboutLabel}>Build</Text>
-                <Text style={styles.aboutValue}>2026.04</Text>
+              <View style={[styles.aboutRow, { borderBottomColor: theme.colors.borderSilver }]}>
+                <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>Account Email</Text>
+                <Text style={[theme.typography.body, { color: theme.colors.ivory }]}>{user?.email || 'N/A'}</Text>
               </View>
-              <View style={styles.aboutRow}>
-                <Text style={styles.aboutLabel}>Developer</Text>
-                <Text style={styles.aboutValue}>TouristGuide Team</Text>
+              <View style={[styles.aboutRow, { borderBottomWidth: 0 }]}>
+                <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>Developer</Text>
+                <Text style={[theme.typography.body, { color: theme.colors.ivory }]}>TouristGuide Team</Text>
               </View>
-            </View>
+            </GlassCard>
           )}
 
           {/* ═══ Log Out ═══ */}
-          <TouchableOpacity style={styles.logoutRow} onPress={handleLogout}>
-            <View style={[styles.rowIcon, { backgroundColor: '#ff7a4518' }]}>
-              <Ionicons name="log-out-outline" size={18} color="#ff7a45" />
-            </View>
-            <Text style={styles.logoutText}>Log Out</Text>
-            <Ionicons name="chevron-forward" size={18} color="#ff7a45" style={{ marginLeft: 'auto' }} />
+          <TouchableOpacity style={styles.logoutRowWrapper} onPress={handleLogout} activeOpacity={0.7}>
+            <GlassCard style={[styles.sectionCard]} glowOnPress={false}>
+              <View style={styles.row}>
+                <View style={[styles.rowIcon, { backgroundColor: theme.colors.crimson + '22' }]}>
+                  <Ionicons name="log-out-outline" size={18} color={theme.colors.crimson} />
+                </View>
+                <Text style={[theme.typography.body, styles.rowText, { color: theme.colors.crimson, fontWeight: '600' }]}>
+                  Log Out
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.crimson} style={{ marginLeft: 'auto' }} />
+              </View>
+            </GlassCard>
           </TouchableOpacity>
 
           {/* Footer */}
-          <Text style={styles.footer}>TouristGuide v1.0.0 • Made with ❤️</Text>
+          <Text style={[theme.typography.caption, styles.footer, { color: theme.colors.parchment }]}>
+            TouristGuide v1.1.0 • Made with ❤️
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#050b18' },
-
-  headerArea: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    backgroundColor: '#131b33',
-  },
-  title: { color: '#ffffff', fontSize: 24, fontWeight: '700' },
-
-  scrollArea: { flex: 1, paddingHorizontal: 20 },
-
-  // Avatar
-  avatarSection: { alignItems: 'center', paddingTop: 24, paddingBottom: 20 },
-  avatar: {
-    width: 80, height: 80, borderRadius: 40,
-    backgroundColor: '#ff7a45',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  avatarText: { color: '#fff', fontSize: 28, fontWeight: '700' },
-  name: {
-    color: '#ffffff', fontSize: 18, fontWeight: '600',
-    marginTop: 12,
-  },
-  email: { color: '#b0b4c3', fontSize: 13, marginTop: 2 },
-  publicBadge: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#1a2038', borderRadius: 999,
-    paddingHorizontal: 10, paddingVertical: 4,
-    marginTop: 8, gap: 4,
-  },
-  publicBadgeText: { color: '#888', fontSize: 11 },
-
-  // Stats
-  statsCard: {
-    backgroundColor: '#161b2b', borderRadius: 18,
-    padding: 16, marginBottom: 20,
-  },
-  statsTitle: { color: '#ffffff', fontSize: 15, fontWeight: '600', marginBottom: 12 },
-  statsRow: { flexDirection: 'row', alignItems: 'center' },
-  statBox: { alignItems: 'center', flex: 1 },
-  statNumber: { color: '#ff7a45', fontSize: 22, fontWeight: '800' },
-  statLabel: { color: '#b0b4c3', fontSize: 11, marginTop: 4 },
-  statDivider: { width: 1, height: 30, backgroundColor: '#252a3f' },
-
-  // Section rows
-  row: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#252a3f',
-  },
-  rowIcon: {
-    width: 34, height: 34, borderRadius: 10,
-    backgroundColor: '#1a2038',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  rowText: { color: '#ffffff', fontSize: 14, marginLeft: 12 },
-
-  // Expanded sections
-  expandedBox: {
-    backgroundColor: '#111728',
-    borderRadius: 16, padding: 16, marginBottom: 8,
-  },
-
-  // Form fields
-  fieldLabel: {
-    color: '#888', fontSize: 12, marginTop: 12, marginBottom: 6,
-    textTransform: 'uppercase', letterSpacing: 0.5,
-  },
-  fieldInput: {
-    backgroundColor: '#1a2038', borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 12,
-    color: '#fff', fontSize: 14, marginBottom: 4,
-  },
-
-  // Gender selector
-  genderRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
-  genderChip: {
-    flex: 1, paddingVertical: 10, borderRadius: 12,
-    backgroundColor: '#1a2038', alignItems: 'center',
-    borderWidth: 1, borderColor: '#2b3350',
-  },
-  genderChipActive: {
-    backgroundColor: '#ff7a4522', borderColor: '#ff7a45',
-  },
-  genderText: { color: '#888', fontSize: 13 },
-  genderTextActive: { color: '#ff7a45', fontWeight: '600' },
-
-  // Save button
-  saveButton: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#ff7a45', borderRadius: 14,
-    paddingVertical: 12, marginTop: 16, gap: 6,
-  },
-  saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-
-  // Toggle
-  toggleRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 4,
-  },
-  toggleLabel: { color: '#fff', fontSize: 14, fontWeight: '500' },
-  toggleDesc: { color: '#666', fontSize: 11, marginTop: 2 },
-
-  // Divider
-  divider: {
-    height: 1, backgroundColor: '#252a3f',
-    marginVertical: 16,
-  },
-  pwSectionTitle: {
-    color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 8,
-  },
-
-  // Help
-  helpCard: {
-    alignItems: 'center', paddingVertical: 20, gap: 8,
-  },
-  helpTitle: { color: '#3a4560', fontSize: 16, fontWeight: '600' },
-  helpDesc: { color: '#2a3352', fontSize: 13, textAlign: 'center', lineHeight: 20 },
-
-  // About
-  aboutRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#1e2540',
-  },
-  aboutLabel: { color: '#888', fontSize: 13 },
-  aboutValue: { color: '#ddd', fontSize: 13 },
-
-  // Logout
-  logoutRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 14, marginTop: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#252a3f',
-  },
-  logoutText: { color: '#ff7a45', fontSize: 14, fontWeight: '600', marginLeft: 12 },
-
-  // Footer
-  footer: {
-    color: '#2a3352', fontSize: 11,
-    textAlign: 'center', marginTop: 24,
-  },
-});

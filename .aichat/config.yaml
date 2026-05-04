@@ -1,0 +1,5 @@
+model: minimax/minimax-m2.5:free
+
+openai:
+  api_base: https://openrouter.ai/api/v1
+  api_key: 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
