@@ -109,7 +109,7 @@ function MainTabs() {
           borderTopColor: 'rgba(201, 168, 76, 0.15)',
           elevation: 20,
           position: 'absolute',
-          bottom: 28,
+          bottom: 25,
           left: 16,
           right: 16,
           borderRadius: 24,
