@@ -1,15 +1,25 @@
 // server.js — Express entry point for TouristGuide backend
 // Load environment variables based on environment
-require('dotenv').config({
-  path: process.env.NODE_ENV === 'production' ? '.env' : '../.env'
-});
+require('dotenv').config();
 
-// Validate essential environment variables
-const requiredEnv = ['MONGODB_URI', 'JWT_SECRET', 'OPENROUTER_API_KEY'];
+// Use Google Public DNS to resolve MongoDB Atlas SRV records
+// (some networks block SRV queries needed by mongodb+srv:// URIs)
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+
+// Validate essential environment variables (MONGODB_URI is optional — falls back to in-memory)
+const requiredEnv = ['JWT_SECRET', 'OPENROUTER_API_KEY'];
+const placeholders = ['your_jwt_secret_here', 'your_openrouter_api_key_here'];
 const missing = requiredEnv.filter(key => !process.env[key]);
+const stillPlaceholder = requiredEnv.filter(key => process.env[key] && placeholders.includes(process.env[key]));
+
 if (missing.length > 0) {
   console.error(`❌ FATAL ERROR: Missing required environment variables: ${missing.join(', ')}`);
   process.exit(1);
+}
+
+if (stillPlaceholder.length > 0) {
+  console.warn(`\n⚠️  WARNING: The following env variables still have placeholder values: ${stillPlaceholder.join(', ')}`);
 }
 const express = require('express');
 const cors = require('cors');
@@ -61,7 +71,7 @@ app.use(cors({
       return callback(null, true);
     }
     // Also allow any Expo dev client
-    if (origin.startsWith('exp://') || origin.startsWith('http://192.168.')) {
+    if (origin.startsWith('exp://') || origin.startsWith('http://192.168.') || origin.startsWith('http://10.')) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
