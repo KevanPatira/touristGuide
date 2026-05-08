@@ -49,6 +49,7 @@ export default function SignUpScreen({ navigation }) {
     try {
       await signUp(email.trim(), password, name.trim());
     } catch (error) {
+      console.log('[SignUp] Error:', error.message, error.response?.status, error.response?.data);
       let msg = 'Could not create account. Please try again.';
       if (error.response?.status === 400) {
         if (error.response.data?.message) msg = error.response.data.message;
