@@ -3,6 +3,7 @@ const Post = require('../models/Post');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const Follow = require('../models/Follow');
+const cloudinary = require('../config/cloudinary.config');
 
 /**
  * Create a new post
@@ -10,9 +11,11 @@ const Follow = require('../models/Follow');
  */
 exports.createPost = async (req, res) => {
   try {
-    const { text, imageUrl, location } = req.body;
-    if (!text || !text.trim()) {
-      return res.status(400).json({ success: false, message: 'Post text is required' });
+    const { text, imageUrl, location, media } = req.body;
+
+    // At least text or media is required
+    if ((!text || !text.trim()) && !imageUrl && (!media || media.length === 0)) {
+      return res.status(400).json({ success: false, message: 'Post must have text or media' });
     }
 
     const author = await User.findById(req.user.id);
@@ -20,10 +23,23 @@ exports.createPost = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    // Build media array from the new field or fall back to legacy imageUrl
+    let mediaItems = [];
+    if (media && Array.isArray(media) && media.length > 0) {
+      mediaItems = media.map(m => ({
+        url: m.url,
+        publicId: m.publicId || null,
+        type: m.type || 'image',
+        width: m.width || null,
+        height: m.height || null,
+      }));
+    }
+
     const post = await Post.create({
       authorId: req.user.id,
-      text: text.trim(),
-      imageUrl: imageUrl || null,
+      text: (text || '').trim(),
+      imageUrl: imageUrl || (mediaItems.length > 0 ? mediaItems[0].url : null),
+      media: mediaItems,
       location: location || 'My Location',
     });
 
@@ -82,7 +98,7 @@ exports.getPosts = async (req, res) => {
         .skip(skip)
         .limit(limitNum)
         .populate('authorId', 'name username avatar')
-        .lean(),
+        .lean({ virtuals: true }),
       Post.countDocuments(filter),
     ]);
 
@@ -179,6 +195,21 @@ exports.deletePost = async (req, res) => {
 
     if (post.authorId.toString() !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Not authorized to delete this post' });
+    }
+
+    // Clean up Cloudinary assets
+    if (post.media && post.media.length > 0) {
+      for (const item of post.media) {
+        if (item.publicId) {
+          try {
+            await cloudinary.uploader.destroy(item.publicId, {
+              resource_type: item.type || 'image',
+            });
+          } catch (e) {
+            console.log('Cloudinary cleanup error:', e.message);
+          }
+        }
+      }
     }
 
     await Post.findByIdAndDelete(req.params.id);

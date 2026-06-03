@@ -2,20 +2,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
-  Share, Animated, Modal, TextInput, FlatList, ActivityIndicator, Alert
+  Share, Animated, Modal, TextInput, FlatList, ActivityIndicator, Alert, Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../constants/AuthContext';
 import { useTheme } from '../../constants/ThemeContext';
 import * as commentService from '../../services/comment.service';
 import * as postService from '../../services/post.service';
+import * as followService from '../../services/follow.service';
 import GlassCard from './GlassCard';
+import GifPickerModal from './GifPickerModal';
 
 function CommentsModal({ visible, onClose, postId, postAuthorId, theme }) {
   const { user, userProfile } = useAuth();
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showGifPicker, setShowGifPicker] = useState(false);
 
   // Fetch comments from MongoDB
   useEffect(() => {
@@ -40,15 +43,23 @@ function CommentsModal({ visible, onClose, postId, postAuthorId, theme }) {
     return () => { mounted = false; };
   }, [visible, postId]);
 
-  const handleAddComment = async () => {
-    if (!commentText.trim()) return;
+  const handleAddComment = async (textOverride = null) => {
+    const textToSend = textOverride || commentText;
+    if (!textToSend.trim()) return;
+
     try {
-      const res = await commentService.addComment(postId, commentText.trim());
+      const res = await commentService.addComment(postId, textToSend.trim(), postAuthorId);
+      // add locally
       setComments(prev => [...prev, res.data]);
-      setCommentText('');
+      if (!textOverride) setCommentText('');
     } catch (e) {
+      console.log('Error adding comment:', e);
       Alert.alert('Error', 'Could not add comment.');
     }
+  };
+
+  const handleSendGif = (gifUrl) => {
+    handleAddComment(`[GIF] ${gifUrl}`);
   };
 
   return (
@@ -93,9 +104,17 @@ function CommentsModal({ visible, onClose, postId, postAuthorId, theme }) {
                     <Text style={[theme.typography.label, { color: theme.colors.ivory, fontSize: 11 }]}>
                       {item.authorName}
                     </Text>
-                    <Text style={[theme.typography.body, { color: theme.colors.parchment, fontSize: 13, marginTop: 2 }]}>
-                      {item.text}
-                    </Text>
+                    {item.text && item.text.startsWith('[GIF] ') ? (
+                      <Image 
+                        source={{ uri: item.text.replace('[GIF] ', '') }} 
+                        style={{ width: 120, height: 120, borderRadius: 8, marginTop: 4 }} 
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={[theme.typography.body, { color: theme.colors.parchment, fontSize: 13, marginTop: 2 }]}>
+                        {item.text}
+                      </Text>
+                    )}
                   </View>
                 </View>
               )}
@@ -111,7 +130,10 @@ function CommentsModal({ visible, onClose, postId, postAuthorId, theme }) {
               value={commentText}
               onChangeText={setCommentText}
             />
-            <TouchableOpacity onPress={handleAddComment} disabled={!commentText.trim()}>
+            <TouchableOpacity onPress={() => setShowGifPicker(true)} style={{ marginRight: 12 }}>
+              <Text style={{ color: theme.colors.gold, fontWeight: 'bold' }}>GIF</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleAddComment(null)} disabled={!commentText.trim()}>
               <Ionicons
                 name="send"
                 size={22}
@@ -121,6 +143,12 @@ function CommentsModal({ visible, onClose, postId, postAuthorId, theme }) {
           </View>
         </View>
       </View>
+
+      <GifPickerModal 
+        visible={showGifPicker} 
+        onClose={() => setShowGifPicker(false)} 
+        onSelect={handleSendGif} 
+      />
     </Modal>
   );
 }
@@ -242,6 +270,7 @@ export default function PostCard({ post, onAuthorPress, onLike, onUnlike, onDele
   const [showComments, setShowComments] = useState(false);
   const [showViews, setShowViews] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
+  const [followStatus, setFollowStatus] = useState('none');
   const heartScale = useRef(new Animated.Value(1)).current;
 
   // ── Entrance animation ──
@@ -317,6 +346,31 @@ export default function PostCard({ post, onAuthorPress, onLike, onUnlike, onDele
     }
   };
 
+  useEffect(() => {
+    if (user && !isOwner && authorIdStr) {
+      followService.checkFollowStatus(authorIdStr).then(res => {
+        if (res && res.success) {
+          setFollowStatus(res.status);
+        }
+      }).catch(e => console.log('Follow status error:', e));
+    }
+  }, [user, isOwner, authorIdStr]);
+
+  const handleFollow = async () => {
+    try {
+      setFollowStatus('pending'); // Optimistic
+      const res = await followService.followUser(authorIdStr);
+      if (res.success) {
+        setFollowStatus(res.status);
+      } else {
+        setFollowStatus('none');
+      }
+    } catch (error) {
+      setFollowStatus('none');
+      console.log('Follow error:', error);
+    }
+  };
+
   const handleShare = async () => {
     try {
       await Share.share({
@@ -368,6 +422,17 @@ export default function PostCard({ post, onAuthorPress, onLike, onUnlike, onDele
   const authorName = post.authorName || post.authorId?.name || 'Traveler';
   const authorAvatar = post.authorAvatar || post.authorId?.avatar || '';
 
+  // Resolve media items array
+  const mediaItems = post.allMedia?.length > 0
+    ? post.allMedia
+    : post.media?.length > 0
+      ? post.media
+      : post.imageUrl
+        ? [{ url: post.imageUrl, type: 'image' }]
+        : [];
+
+  const cardInnerWidth = Dimensions.get('window').width - 64;
+
   return (
     <>
       <Animated.View style={{ opacity: entranceFade, transform: [{ translateY: entranceSlide }] }}>
@@ -388,13 +453,23 @@ export default function PostCard({ post, onAuthorPress, onLike, onUnlike, onDele
                   </Text>
                 )}
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[theme.typography.label, { color: theme.colors.ivory }]}>
-                  {authorName}
-                </Text>
-                <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 2 }]}>
-                  {formatTime(post.createdAt)} • {post.location || 'Somewhere'}
-                </Text>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flexShrink: 1 }}>
+                  <Text style={[theme.typography.label, { color: theme.colors.ivory }]} numberOfLines={1}>
+                    {authorName}
+                  </Text>
+                  <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 2 }]} numberOfLines={1}>
+                    {formatTime(post.createdAt)} • {post.location || 'Somewhere'}
+                  </Text>
+                </View>
+                {!isOwner && followStatus === 'none' && (
+                  <TouchableOpacity 
+                    style={{ marginLeft: 8, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, backgroundColor: theme.colors.gold + '22', borderWidth: 1, borderColor: theme.colors.gold }}
+                    onPress={handleFollow}
+                  >
+                    <Text style={{ color: theme.colors.gold, fontSize: 12, fontWeight: 'bold' }}>Follow</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </TouchableOpacity>
             {/* Triple dot menu */}
@@ -407,11 +482,50 @@ export default function PostCard({ post, onAuthorPress, onLike, onUnlike, onDele
           <TouchableOpacity activeOpacity={1} onPress={handleDoubleTap}>
             <View style={styles.postBody}>
               {post.text ? (
-                <Text style={[theme.typography.body, { color: theme.colors.ivory }]}>{post.text}</Text>
+                <Text style={[theme.typography.body, { color: theme.colors.ivory, marginBottom: mediaItems.length > 0 ? 12 : 0 }]}>
+                  {post.text}
+                </Text>
               ) : null}
-              {post.imageUrl && (
-                <Image source={{ uri: post.imageUrl }} style={styles.postImage} resizeMode="cover" />
+
+              {/* Media Collage */}
+              {mediaItems.length > 0 && (
+                <View style={{ width: cardInnerWidth, height: 220, borderRadius: 12, overflow: 'hidden', marginTop: post.text ? 4 : 0, flexDirection: 'row', gap: 4 }}>
+                  {mediaItems.length === 1 && (
+                    <Image source={{ uri: mediaItems[0].url }} style={{ flex: 1, height: '100%', borderRadius: 12 }} resizeMode="cover" />
+                  )}
+                  {mediaItems.length === 2 && (
+                    <>
+                      <Image source={{ uri: mediaItems[0].url }} style={{ flex: 1, height: '100%', borderRadius: 12 }} resizeMode="cover" />
+                      <Image source={{ uri: mediaItems[1].url }} style={{ flex: 1, height: '100%', borderRadius: 12 }} resizeMode="cover" />
+                    </>
+                  )}
+                  {mediaItems.length >= 3 && (
+                    <>
+                      <Image source={{ uri: mediaItems[0].url }} style={{ flex: 2, height: '100%', borderRadius: 12 }} resizeMode="cover" />
+                      <View style={{ flex: 1, gap: 4 }}>
+                        <Image source={{ uri: mediaItems[1].url }} style={{ flex: 1, width: '100%', borderRadius: 12 }} resizeMode="cover" />
+                        {mediaItems.length === 3 ? (
+                          <Image source={{ uri: mediaItems[2].url }} style={{ flex: 1, width: '100%', borderRadius: 12 }} resizeMode="cover" />
+                        ) : (
+                          <View style={{ flex: 1 }}>
+                            <Image source={{ uri: mediaItems[2].url }} style={{ flex: 1, width: '100%', borderRadius: 12 }} resizeMode="cover" />
+                            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}>
+                              <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18 }}>+{mediaItems.length - 3}</Text>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+                  {mediaItems[0].type === 'video' && mediaItems.length === 1 && (
+                    <View style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, flexDirection: 'row', alignItems: 'center' }}>
+                      <Ionicons name="videocam" size={12} color="#fff" style={{ marginRight: 4 }} />
+                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>VIDEO</Text>
+                    </View>
+                  )}
+                </View>
               )}
+
               {/* Double-tap heart overlay */}
               <Animated.View
                 pointerEvents="none"

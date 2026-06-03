@@ -1,5 +1,13 @@
-// models/Post.js — Community post schema
+// models/Post.js — Community post schema with media support
 const mongoose = require('mongoose');
+
+const MediaSchema = new mongoose.Schema({
+  url: { type: String, required: true },
+  publicId: { type: String, default: null },
+  type: { type: String, enum: ['image', 'video'], default: 'image' },
+  width: { type: Number, default: null },
+  height: { type: Number, default: null },
+}, { _id: false });
 
 const PostSchema = new mongoose.Schema({
   authorId: {
@@ -10,13 +18,20 @@ const PostSchema = new mongoose.Schema({
   },
   text: {
     type: String,
-    required: [true, 'Post text is required'],
     trim: true,
     maxlength: [2000, 'Post cannot exceed 2000 characters'],
+    default: '',
   },
+  // Legacy single image field (kept for backward compatibility)
   imageUrl: {
     type: String,
     default: null,
+  },
+  // New: array of media attachments (images/videos)
+  media: {
+    type: [MediaSchema],
+    default: [],
+    validate: [arr => arr.length <= 10, 'Maximum 10 media items per post'],
   },
   location: {
     type: String,
@@ -45,5 +60,14 @@ const PostSchema = new mongoose.Schema({
 PostSchema.index({ createdAt: -1 });
 PostSchema.index({ likes: -1, createdAt: -1 });
 PostSchema.index({ authorId: 1, createdAt: -1 });
+
+// Virtual: combine legacy imageUrl + media array for rendering
+PostSchema.virtual('allMedia').get(function () {
+  const items = [...this.media];
+  if (this.imageUrl && !items.some(m => m.url === this.imageUrl)) {
+    items.unshift({ url: this.imageUrl, type: 'image', publicId: null });
+  }
+  return items;
+});
 
 module.exports = mongoose.model('Post', PostSchema);

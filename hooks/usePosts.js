@@ -1,12 +1,15 @@
-// hooks/usePosts.js — Community posts backed by MongoDB API
+// hooks/usePosts.js — Community posts backed by MongoDB API with media upload
 import { useState, useCallback, useRef } from 'react';
 import * as postService from '../services/post.service';
+import { uploadMedia, uploadMultipleMedia } from '../services/media.service';
 
 export default function usePosts() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
   const pageRef = useRef(1);
   const sortRef = useRef('recent');
 
@@ -53,10 +56,46 @@ export default function usePosts() {
   }, [fetchPosts]);
 
   /**
-   * Create a post
+   * Create a post with optional multi-media upload to Cloudinary.
+   * @param {string} text - post text
+   * @param {Array} mediaItems - array of local media objects {uri, type}
+   * @param {string} location - location label
+   * @returns {object} created post
    */
-  const createPost = useCallback(async (text, imageUrl, location) => {
-    const res = await postService.createPost(text, imageUrl, location);
+  const createPost = useCallback(async (text, mediaItems = [], location) => {
+    let uploadedMedia = [];
+
+    // Upload media to Cloudinary if provided
+    if (mediaItems && mediaItems.length > 0) {
+      try {
+        setIsUploading(true);
+        setUploadProgress(0);
+
+        const results = await uploadMultipleMedia(mediaItems, (index, pct) => {
+          // Average progress roughly across all files
+          const overallProgress = Math.round(((index * 100) + pct) / mediaItems.length);
+          setUploadProgress(overallProgress);
+        });
+
+        uploadedMedia = results.map(res => ({
+          url: res.url,
+          publicId: res.publicId,
+          type: res.type || 'image',
+          width: res.width,
+          height: res.height,
+        }));
+      } catch (e) {
+        console.log('[usePosts] Media upload failed:', e.message);
+      } finally {
+        setIsUploading(false);
+        setUploadProgress(0);
+      }
+    }
+
+    // Create the post — pass the Cloudinary URL in imageUrl for backward compat
+    const imageUrl = uploadedMedia.length > 0 ? uploadedMedia[0].url : null;
+    const res = await postService.createPost(text, imageUrl, location, uploadedMedia);
+
     // Prepend to list
     setPosts(prev => [res.data, ...prev]);
     return res.data;
@@ -112,6 +151,8 @@ export default function usePosts() {
     loading,
     refreshing,
     hasMore,
+    uploadProgress,
+    isUploading,
     fetchPosts,
     loadMore,
     onRefresh,

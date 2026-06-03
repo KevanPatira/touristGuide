@@ -13,6 +13,7 @@ import { useTheme } from '../constants/ThemeContext';
 import useChat from '../hooks/useChat';
 import FloatingParticles from '../components/ui/FloatingParticles';
 import KeyboardShift from '../components/ui/KeyboardShift';
+import GifPickerModal from '../components/ui/GifPickerModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ChatScreen({ route, navigation }) {
@@ -24,6 +25,7 @@ export default function ChatScreen({ route, navigation }) {
 
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const inputRef = useRef(null);
 
   // ═══ Send handler ═══
@@ -51,11 +53,13 @@ export default function ChatScreen({ route, navigation }) {
             quality: 0.7,
           });
           if (!result.canceled) {
-            // In a real app, you would upload this to Firebase Storage
-            // For now, we'll just send the URI as a "message" or handle locally
             sendMessage(`[Image] ${result.assets[0].uri}`, otherUserId);
           }
         } 
+      },
+      { 
+        text: 'GIF', 
+        onPress: () => setShowGifPicker(true)
       },
       { 
         text: 'Document', 
@@ -68,6 +72,10 @@ export default function ChatScreen({ route, navigation }) {
       },
       { text: 'Cancel', style: 'cancel' }
     ]);
+  };
+
+  const handleSendGif = (gifUrl) => {
+    sendMessage(`[GIF] ${gifUrl}`, otherUserId);
   };
 
   // ═══ Format time ═══
@@ -144,12 +152,24 @@ export default function ChatScreen({ route, navigation }) {
               ? { backgroundColor: theme.colors.gold + '22', borderColor: theme.colors.gold + '44', borderBottomRightRadius: 4 }
               : { backgroundColor: theme.colors.midnight, borderColor: theme.colors.borderSilver, borderBottomLeftRadius: 4 },
           ]}>
-            <Text style={[theme.typography.body, {
-              color: isMe ? theme.colors.ivory : theme.colors.ivory,
-              fontSize: 14,
-            }]}>
-              {item.text}
-            </Text>
+            {item.text.startsWith('[GIF]') ? (
+              <Image 
+                source={{ uri: item.text.replace('[GIF] ', '') }} 
+                style={{ width: 200, height: 200, borderRadius: 12, marginBottom: 4 }} 
+              />
+            ) : item.text.startsWith('[Image]') ? (
+              <Image 
+                source={{ uri: item.text.replace('[Image] ', '') }} 
+                style={{ width: 200, height: 200, borderRadius: 12, marginBottom: 4 }} 
+              />
+            ) : (
+              <Text style={[theme.typography.body, {
+                color: isMe ? theme.colors.ivory : theme.colors.ivory,
+                fontSize: 14,
+              }]}>
+                {item.text}
+              </Text>
+            )}
             <Text style={[styles.timeText, {
               color: isMe ? theme.colors.goldMuted : theme.colors.ash,
             }]}>
@@ -272,6 +292,12 @@ export default function ChatScreen({ route, navigation }) {
           )}
         </TouchableOpacity>
       </View>
+
+      <GifPickerModal 
+        visible={showGifPicker} 
+        onClose={() => setShowGifPicker(false)} 
+        onSelect={handleSendGif} 
+      />
     </View>
     </KeyboardShift>
   );

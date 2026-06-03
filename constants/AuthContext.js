@@ -31,11 +31,13 @@ export const AuthProvider = ({ children }) => {
           setUserProfile(buildProfile(enriched));
         }
       } catch (error) {
-        // Token expired or invalid — clear it
+        // Only clear the token if it's explicitly rejected as invalid/expired (401)
         console.log('[Auth] Rehydration failed:', error.message);
-        await AsyncStorage.removeItem('authToken');
-        setUser(null);
-        setUserProfile(null);
+        if (error.response?.status === 401) {
+          await AsyncStorage.removeItem('authToken');
+          setUser(null);
+          setUserProfile(null);
+        }
       } finally {
         setLoading(false);
       }

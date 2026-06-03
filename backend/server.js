@@ -41,6 +41,7 @@ const commentRoutes = require('./routes/comment.routes');
 const followRoutes = require('./routes/follow.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const chatRoutes = require('./routes/chat.routes');
+const mediaRoutes = require('./routes/media.routes');
 
 // ══════════════════════════════════════════════════════════
 //  Initialize Express App
@@ -80,7 +81,7 @@ app.use(cors({
 }));
 
 // Body parsing
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Request logging
@@ -106,6 +107,7 @@ app.use('/api/comments', commentRoutes);
 app.use('/api/follows', followRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chats', chatRoutes);
+app.use('/api/media', mediaRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

@@ -19,7 +19,7 @@ import ComposerModal from '../components/ui/ComposerModal';
 import FloatingAIChat from '../components/ui/FloatingAIChat';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const tabs = ['Recent', 'Popular'];
+const tabs = ['For You', 'Trending', 'Nearby', 'Solo Travellers'];
 
 export default function CommunityScreen({ navigation }) {
   const { theme } = useTheme();
@@ -28,7 +28,7 @@ export default function CommunityScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('Recent');
   const [showComposer, setShowComposer] = useState(false);
   const [text, setText] = useState('');
-  const [imageUri, setImageUri] = useState(null);
+  const [mediaItems, setMediaItems] = useState([]);
   const [postLocation, setPostLocation] = useState('');
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
@@ -36,6 +36,7 @@ export default function CommunityScreen({ navigation }) {
   const { unreadCount } = useNotifications(user?.uid);
   const {
     posts, loading, refreshing, hasMore,
+    uploadProgress, isUploading,
     fetchPosts, loadMore, onRefresh,
     createPost, likePost, unlikePost, deletePost,
   } = usePosts();
@@ -48,19 +49,23 @@ export default function CommunityScreen({ navigation }) {
 
   // ═══ Fetch posts when tab changes ═══
   useEffect(() => {
-    const sort = activeTab === 'Popular' ? 'popular' : 'recent';
+    const sort = activeTab === 'Trending' ? 'popular' : 'recent';
     fetchPosts(sort);
   }, [activeTab, fetchPosts]);
 
-  // ═══ Image Picker ═══
-  const pickImage = async () => {
+  // ═══ Media Picker ═══
+  const pickMedia = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
+      mediaTypes: ['images', 'videos'],
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
       quality: 0.7,
     });
     if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
+      setMediaItems(result.assets.map(asset => ({
+        uri: asset.uri,
+        type: asset.type || (asset.uri.endsWith('.mp4') ? 'video' : 'image'),
+      })));
     }
   };
 
@@ -90,7 +95,7 @@ export default function CommunityScreen({ navigation }) {
 
   // ═══ Create Post (MongoDB) ═══
   const handlePost = async () => {
-    if (!text.trim() && !imageUri) return;
+    if (!text.trim() && mediaItems.length === 0) return;
     if (!user) {
       Alert.alert('Error', 'You must be logged in to post.');
       return;
@@ -98,12 +103,11 @@ export default function CommunityScreen({ navigation }) {
 
     setIsPosting(true);
     try {
-      const imageUrl = imageUri || null;
-      await createPost(text.trim(), imageUrl, postLocation || 'Earth');
+      await createPost(text.trim(), mediaItems, postLocation || 'Earth');
 
       // Reset & close
       setText('');
-      setImageUri(null);
+      setMediaItems([]);
       setPostLocation('');
       setShowComposer(false);
     } catch (e) {
@@ -135,36 +139,56 @@ export default function CommunityScreen({ navigation }) {
   // ═══ Stories-style top bar (compact) ═══
   const renderHeader = () => (
     <View style={{ paddingBottom: 4 }}>
-      {/* Instagram-style tab pills */}
-      <View style={styles.tabRow}>
-        {tabs.map((t) => {
-          const isActive = activeTab === t;
-          return (
-            <TouchableOpacity
-              key={t}
-              style={[
-                styles.tabPill,
-                isActive
-                  ? { backgroundColor: theme.colors.gold }
-                  : { backgroundColor: theme.colors.midnight, borderWidth: 1, borderColor: theme.colors.borderSilver },
-              ]}
-              onPress={() => setActiveTab(t)}
-            >
-              <Ionicons
-                name={t === 'Recent' ? 'time-outline' : 'flame-outline'}
-                size={14}
-                color={isActive ? theme.colors.obsidian : theme.colors.gold}
-                style={{ marginRight: 4 }}
-              />
-              <Text style={[theme.typography.label, {
-                color: isActive ? theme.colors.obsidian : theme.colors.gold,
-                fontSize: 12,
-              }]}>
-                {t}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+      {/* Search Bar */}
+      <TouchableOpacity 
+        style={{ marginHorizontal: 16, marginTop: 12, marginBottom: 4, flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.midnight, borderWidth: 1, borderColor: theme.colors.borderSilver, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 }}
+        onPress={() => navigation.navigate('Discover')}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="search" size={18} color={theme.colors.ash} style={{ marginRight: 8 }} />
+        <Text style={[theme.typography.body, { color: theme.colors.ash }]}>Find travel buddies or usernames...</Text>
+      </TouchableOpacity>
+      
+      {/* Filter Belt */}
+      <View>
+        <FlatList 
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabRow}
+          data={tabs}
+          keyExtractor={(item) => item}
+          renderItem={({ item: t }) => {
+            const isActive = activeTab === t;
+            let iconName = 'star-outline';
+            if (t === 'Trending') iconName = 'flame-outline';
+            if (t === 'Nearby') iconName = 'location-outline';
+            if (t === 'Solo Travellers') iconName = 'walk-outline';
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.tabPill,
+                  isActive
+                    ? { backgroundColor: theme.colors.gold }
+                    : { backgroundColor: theme.colors.midnight, borderWidth: 1, borderColor: theme.colors.borderSilver },
+                ]}
+                onPress={() => setActiveTab(t)}
+              >
+                <Ionicons
+                  name={iconName}
+                  size={14}
+                  color={isActive ? theme.colors.obsidian : theme.colors.gold}
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={[theme.typography.label, {
+                  color: isActive ? theme.colors.obsidian : theme.colors.gold,
+                  fontSize: 12,
+                }]}>
+                  {t}
+                </Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
       </View>
     </View>
   );
@@ -252,9 +276,7 @@ export default function CommunityScreen({ navigation }) {
         <TouchableOpacity style={styles.subTaskbarIcon}>
           <Ionicons name="home" size={26} color={theme.colors.ivory} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.subTaskbarIcon} onPress={() => navigation.navigate('Discover')}>
-          <Ionicons name="search" size={26} color={theme.colors.ivory} />
-        </TouchableOpacity>
+        {/* Search replaced by top bar search */}
         <TouchableOpacity style={styles.subTaskbarIcon}>
           <Ionicons name="play-circle-outline" size={28} color={theme.colors.ivory} />
         </TouchableOpacity>
@@ -264,23 +286,25 @@ export default function CommunityScreen({ navigation }) {
       </View>
 
       {/* ═══ Composer Modal (Instagram-style) ═══ */}
-      <ComposerModal
-        visible={showComposer}
-        onClose={() => setShowComposer(false)}
-        text={text}
-        setText={setText}
-        imageUri={imageUri}
-        setImageUri={setImageUri}
-        postLocation={postLocation}
-        isFetchingLocation={isFetchingLocation}
-        onGetLocation={handleGetLocation}
-        onPickImage={pickImage}
-        onPost={handlePost}
-        isPosting={isPosting}
-        userProfile={userProfile}
-        displayName={displayName}
-        initials={initials}
-      />
+        <ComposerModal
+          visible={showComposer}
+          onClose={() => setShowComposer(false)}
+          text={text}
+          setText={setText}
+          mediaItems={mediaItems}
+          setMediaItems={setMediaItems}
+          postLocation={postLocation}
+          isFetchingLocation={isFetchingLocation}
+          onGetLocation={handleGetLocation}
+          onPickImage={pickMedia}
+          onPost={handlePost}
+          isPosting={isPosting}
+          isUploading={isUploading}
+          uploadProgress={uploadProgress}
+          userProfile={userProfile}
+          displayName={displayName}
+          initials={initials}
+        />
       <FloatingAIChat />
     </View>
   );

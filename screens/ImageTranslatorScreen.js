@@ -14,8 +14,8 @@ import { useTheme } from '../constants/ThemeContext';
 import styles from './ImageTranslatorStyles';
 
 // API Keys
-const OCR_API_KEY = 'K85864488288957';
-const OPENROUTER_API_KEY = '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';
+const OCR_API_KEY = process.env.EXPO_PUBLIC_OCR_API_KEY;
+const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY;
 const OPENROUTER_MODEL = 'openai/gpt-oss-120b:free';
 
 const INDIAN_LANGS = [

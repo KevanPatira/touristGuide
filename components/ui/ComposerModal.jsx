@@ -2,20 +2,23 @@ import React from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, KeyboardAvoidingView, Platform, Modal, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../constants/ThemeContext';
+import AnimatedProgressBar from './AnimatedProgressBar';
 
 export default function ComposerModal({
   visible,
   onClose,
   text,
   setText,
-  imageUri,
-  setImageUri,
+  mediaItems = [],
+  setMediaItems,
   postLocation,
   isFetchingLocation,
   onGetLocation,
   onPickImage,
   onPost,
   isPosting,
+  isUploading,
+  uploadProgress,
   userProfile,
   displayName,
   initials,
@@ -44,18 +47,18 @@ export default function ComposerModal({
             </Text>
             <TouchableOpacity
               onPress={onPost}
-              disabled={isPosting || (!text.trim() && !imageUri)}
+              disabled={isPosting || isUploading || (!text.trim() && mediaItems.length === 0)}
               style={[
                 styles.postBtn,
-                { backgroundColor: (!text.trim() && !imageUri) ? theme.colors.midnight : theme.colors.gold }
+                { backgroundColor: (!text.trim() && mediaItems.length === 0) ? theme.colors.midnight : theme.colors.gold }
               ]}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {isPosting && <ActivityIndicator size="small" color={theme.colors.obsidian} style={{ marginRight: 6 }} />}
+                {(isPosting || isUploading) && <ActivityIndicator size="small" color={theme.colors.obsidian} style={{ marginRight: 6 }} />}
                 <Text style={[theme.typography.label, {
-                  color: (!text.trim() && !imageUri) ? theme.colors.ash : theme.colors.obsidian
+                  color: (!text.trim() && mediaItems.length === 0) ? theme.colors.ash : theme.colors.obsidian
                 }]}>
-                  Post
+                  {isUploading ? 'Uploading...' : isPosting ? 'Posting...' : 'Post'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -98,16 +101,43 @@ export default function ComposerModal({
             autoFocus
           />
 
-          {/* Image preview */}
-          {imageUri && (
-            <View style={styles.composerImageWrap}>
-              <Image source={{ uri: imageUri }} style={styles.composerImage} />
-              <TouchableOpacity
-                style={styles.removeImageBtn}
-                onPress={() => setImageUri(null)}
-              >
-                <Ionicons name="close-circle" size={28} color="#fff" />
-              </TouchableOpacity>
+          {/* Media preview (Horizontal List) */}
+          {mediaItems.length > 0 && (
+            <View style={styles.composerMediaWrap}>
+              <FlatList
+                data={mediaItems}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item, index) => item.uri || String(index)}
+                renderItem={({ item, index }) => (
+                  <View style={styles.composerImageWrap}>
+                    <Image source={{ uri: item.uri }} style={styles.composerImage} />
+                    {item.type === 'video' && (
+                      <View style={styles.videoBadge}>
+                        <Ionicons name="videocam" size={14} color="#fff" />
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={styles.removeImageBtn}
+                      onPress={() => setMediaItems(prev => prev.filter((_, i) => i !== index))}
+                      disabled={isUploading || isPosting}
+                    >
+                      <Ionicons name="close-circle" size={24} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                contentContainerStyle={{ paddingVertical: 12, gap: 12 }}
+              />
+            </View>
+          )}
+
+          {/* Upload Progress Indicator */}
+          {isUploading && (
+            <View style={{ marginVertical: 12, paddingHorizontal: 4 }}>
+              <AnimatedProgressBar
+                progress={uploadProgress / 100}
+                label={`Uploading Media... ${uploadProgress}%`}
+              />
             </View>
           )}
 
@@ -179,19 +209,28 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     paddingTop: 8,
   },
-  composerImageWrap: {
+  composerMediaWrap: {
     width: '100%',
-    height: 200,
-    borderRadius: 16,
+    height: 180,
+  },
+  composerImageWrap: {
+    width: 140,
+    height: 160,
+    borderRadius: 12,
     overflow: 'hidden',
-    marginVertical: 16,
   },
   composerImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   removeImageBtn: {
     position: 'absolute',
-    top: 8, right: 8,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 14,
+    top: 4, right: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 12,
+  },
+  videoBadge: {
+    position: 'absolute',
+    bottom: 8, left: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 4, borderRadius: 8,
   },
   composerToolbar: {
     flexDirection: 'row',

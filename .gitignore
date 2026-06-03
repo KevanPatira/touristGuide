@@ -42,3 +42,4 @@ backend/.env
 /ios
 /android
 ionic_imports.txt
+*-firebase-adminsdk-*.json
