@@ -47,7 +47,7 @@ const FEATURED_DESTINATIONS = [
   { name: 'Goa Beaches', state: 'Goa', image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=500&q=70', category: 'Beach' },
   { name: 'Jaipur Forts', state: 'Rajasthan', image: 'https://images.unsplash.com/photo-1599661046289-e31897846e41?w=500&q=70', category: 'Heritage' },
   { name: 'Manali Valley', state: 'Himachal Pradesh', image: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=500&q=70', category: 'Nature' },
-  { name: 'Varanasi Ghats', state: 'Uttar Pradesh', image: 'https://images.unsplash.com/photo-1561361513-2d000a50f0dc?w=500&q=70', category: 'Temple' },
+  { name: 'Varanasi Ghats', state: 'Uttar Pradesh', image: 'https://upload.wikimedia.org/wikipedia/commons/b/b9/Varanasiganga.jpg', category: 'Temple' },
 ];
 
 

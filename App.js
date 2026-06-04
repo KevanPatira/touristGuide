@@ -34,6 +34,7 @@ import NotificationsScreen from './screens/NotificationsScreen';
 import DiscoverScreen from './screens/DiscoverScreen';
 import SavedPostsScreen from './screens/SavedPostsScreen';
 import AIChatScreen from './screens/AIChatScreen';
+import SettingsScreen from './screens/SettingsScreen';
 
 import SplashScreen from './screens/SplashScreen';
 
@@ -226,6 +227,7 @@ function AppContent() {
               <Stack.Screen name="Discover" component={DiscoverScreen} />
               <Stack.Screen name="SavedPosts" component={SavedPostsScreen} />
               <Stack.Screen name="AIChat" component={AIChatScreen} />
+              <Stack.Screen name="Settings" component={SettingsScreen} />
             </>
           ) : (
             <>

@@ -50,6 +50,8 @@ export const updateProfile = async (data) => {
   return response.data.user;
 };
 
+
+
 /**
  * Logout the current user.
  * Removes JWT token from storage and blacklists on server.

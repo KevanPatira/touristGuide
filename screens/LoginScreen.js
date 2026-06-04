@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Animated, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 
@@ -16,6 +18,8 @@ const TAGLINES = [
   { icon: 'navigate', text: 'Navigate with confidence' },
   { icon: 'people', text: 'Connect with travelers' },
 ];
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen({ navigation }) {
   const { theme } = useTheme();
@@ -59,6 +63,7 @@ export default function LoginScreen({ navigation }) {
     }, 3000);
     return () => clearInterval(timer);
   }, []);
+
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -135,6 +140,8 @@ export default function LoginScreen({ navigation }) {
           disabled={loading}
           style={{ marginTop: 16 }}
         />
+
+
       </GlassCard>
 
       <View style={styles.taglineContainer}>
@@ -182,5 +189,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: 32,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 16,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
   },
 });

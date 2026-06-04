@@ -374,7 +374,7 @@ export default function PostCard({ post, onAuthorPress, onLike, onUnlike, onDele
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Check out this travel tip from ${post.authorName}: "${post.text}" — via TouristGuide App`,
+        message: `Check out this travel tip from ${post.authorName}: "${post.text}" — via TouristSync App`,
       });
     } catch (error) {}
   };

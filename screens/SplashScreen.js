@@ -169,8 +169,8 @@ export default function SplashScreen({ onFinish }) {
         }}
       >
         <GoldShimmerText
-          text="Tourist Guide"
-          style={[theme.typography.displayXL, { textAlign: 'center' }]}
+          text="TouristSync"
+          style={[theme.typography.displayXL, { textAlign: 'center', fontSize: 32 }]}
           loop={false}
           delay={0}
         />

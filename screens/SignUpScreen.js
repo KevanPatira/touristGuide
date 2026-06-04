@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert,
-  Animated, TextInput, Platform, Keyboard,
+  Animated, TextInput, Platform, Keyboard, Image,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { sendOtp, verifyOtp } from '../services/otp.service';
@@ -16,6 +18,8 @@ import AuthInput from '../components/ui/AuthInput';
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60; // seconds
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function SignUpScreen({ navigation }) {
   const { theme } = useTheme();
@@ -429,5 +433,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 16,
     paddingVertical: 4,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
   },
 });
