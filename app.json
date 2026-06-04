@@ -20,7 +20,9 @@
           "microphonePermission": "touristGuide needs your microphone to capture speech for translation.",
           "speechRecognitionPermission": "touristGuide uses speech recognition to translate what you say."
         }
-      ]
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
     "ios": {
       "supportsTablet": true,
@@ -42,10 +44,6 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    },
-    "plugins": [
-      "expo-font",
-      "expo-web-browser"
-    ]
+    }
   }
 }
