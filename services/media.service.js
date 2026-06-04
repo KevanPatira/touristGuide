@@ -1,6 +1,7 @@
 // services/media.service.js — Upload media files to backend → Cloudinary
 import api from './api';
 import * as ImageManipulator from 'expo-image-manipulator';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * Compress an image before uploading.
@@ -50,17 +51,25 @@ export const uploadMedia = async (uri, type = 'image', onProgress = null) => {
     type: mimeType,
   });
 
-  const { data } = await api.post('/media/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 60000, // 60s timeout for uploads
-    onUploadProgress: (event) => {
-      if (onProgress && event.total) {
-        const pct = Math.round((event.loaded / event.total) * 100);
-        onProgress(pct);
-      }
+  // Use fetch to avoid Axios boundary issues with FormData in React Native
+  const token = await AsyncStorage.getItem('authToken');
+  const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://10.160.113.31:5000/api';
+
+  const response = await fetch(`${baseUrl}/media/upload`, {
+    method: 'POST',
+    headers: {
+      'Authorization': token ? `Bearer ${token}` : '',
+      // DO NOT manually set Content-Type for FormData in fetch, it sets the boundary automatically
     },
+    body: formData
   });
 
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Upload failed (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
   return data;
 };
 

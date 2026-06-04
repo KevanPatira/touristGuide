@@ -89,10 +89,6 @@ export const AuthProvider = ({ children }) => {
     return enriched;
   };
 
-  // Google Sign-In: kept as no-op stub (can be wired to backend later)
-  const signInWithGoogle = async (idToken) => {
-    console.warn('[Auth] Google sign-in via backend not yet implemented');
-  };
 
   // Sign out
   const logOut = async () => {
@@ -147,7 +143,6 @@ export const AuthProvider = ({ children }) => {
         loading,
         signUp,
         signIn,
-        signInWithGoogle,
         logOut,
         refreshProfile,
         updateUserProfile,

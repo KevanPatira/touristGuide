@@ -1,6 +1,7 @@
 // controllers/auth.controller.js — Authentication controller
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
+const axios = require('axios');
 const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { blacklistToken } = require('../middleware/auth.middleware');
@@ -232,4 +233,91 @@ const logout = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { register, login, getMe, getUserById, updateMe, logout };
+/**
+ * @desc    Sign in or sign up with Google OAuth
+ * @route   POST /api/auth/google
+ * @access  Public
+ */
+const googleSignIn = asyncHandler(async (req, res) => {
+  const { idToken } = req.body;
+
+  if (!idToken) {
+    return res.status(400).json({
+      success: false,
+      message: 'Google ID token is required',
+    });
+  }
+
+  // Verify the Google ID token
+  let googleUser;
+  try {
+    const response = await axios.get(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`
+    );
+    googleUser = response.data;
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid or expired Google token',
+    });
+  }
+
+  // Extract user info from Google token
+  const { sub: googleId, email, name, picture } = googleUser;
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: 'Could not retrieve email from Google account',
+    });
+  }
+
+  // Find existing user by googleId or email (merge accounts)
+  let user = await User.findOne({
+    $or: [{ googleId }, { email: email.toLowerCase() }],
+  });
+
+  if (user) {
+    // Existing user — link Google ID if not already linked
+    if (!user.googleId) {
+      user.googleId = googleId;
+      user.authProvider = user.passwordHash ? user.authProvider : 'google';
+    }
+    // Update avatar from Google if user doesn't have one
+    if (!user.avatar && picture) {
+      user.avatar = picture;
+    }
+    user.lastLogin = new Date();
+    await user.save();
+  } else {
+    // New user — create account from Google profile
+    user = await User.create({
+      name: name || email.split('@')[0],
+      email: email.toLowerCase(),
+      googleId,
+      authProvider: 'google',
+      avatar: picture || null,
+    });
+  }
+
+  // Generate JWT
+  const token = generateToken(user._id, user.email);
+
+  res.status(200).json({
+    success: true,
+    token,
+    user: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      avatar: user.avatar,
+      preferredLanguage: user.preferredLanguage,
+      homeCountry: user.homeCountry,
+      bio: user.bio,
+      lastLogin: user.lastLogin,
+      createdAt: user.createdAt,
+    },
+  });
+});
+
+module.exports = { register, login, googleSignIn, getMe, getUserById, updateMe, logout };

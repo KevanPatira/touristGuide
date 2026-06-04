@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import { useTheme } from '../constants/ThemeContext';
-import styles from './ImageTranslatorStyles';
+import styles from './styles/ImageTranslatorStyles';
 
 // API Keys
 const OCR_API_KEY = process.env.EXPO_PUBLIC_OCR_API_KEY;

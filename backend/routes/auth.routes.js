@@ -1,7 +1,7 @@
 // routes/auth.routes.js — Authentication routes
 const express = require('express');
 const { body } = require('express-validator');
-const { register, login, getMe, getUserById, updateMe, logout } = require('../controllers/auth.controller');
+const { register, login, googleSignIn, getMe, getUserById, updateMe, logout } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
 const { loginLimiter, registerLimiter } = require('../middleware/rateLimiter');
 
@@ -39,6 +39,9 @@ router.post(
   ],
   login
 );
+
+// POST /api/auth/google — Google OAuth sign-in
+router.post('/google', googleSignIn);
 
 // GET /api/auth/me — Get current user
 router.get('/me', protect, getMe);

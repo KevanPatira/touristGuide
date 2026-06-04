@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Image } from 'react-native';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 
@@ -8,6 +10,8 @@ import GlassCard from '../components/ui/GlassCard';
 import PressableGoldButton from '../components/ui/PressableGoldButton';
 import AuthLayout from '../components/ui/AuthLayout';
 import AuthInput from '../components/ui/AuthInput';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function SignUpScreen({ navigation }) {
   const { theme } = useTheme();
@@ -63,6 +67,7 @@ export default function SignUpScreen({ navigation }) {
     }
     setLoading(false);
   };
+
 
   const footer = (
     <View style={styles.loginRow}>
@@ -123,6 +128,8 @@ export default function SignUpScreen({ navigation }) {
           disabled={loading}
           style={{ marginTop: 8 }}
         />
+
+
       </GlassCard>
     </AuthLayout>
   );
@@ -136,5 +143,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: 24,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
   },
 });

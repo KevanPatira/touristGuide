@@ -161,7 +161,7 @@ export default function PlaceDetailScreen({ route, navigation }) {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Check out ${place.name} in ${place.city}, ${place.state}! Discovered on TouristGuide.`,
+        message: `Check out ${place.name} in ${place.city}, ${place.state}! Discovered on TouristSync.`,
       });
     } catch (error) {
       console.error('Error sharing:', error);
