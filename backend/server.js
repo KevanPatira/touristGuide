@@ -42,6 +42,7 @@ const followRoutes = require('./routes/follow.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const chatRoutes = require('./routes/chat.routes');
 const mediaRoutes = require('./routes/media.routes');
+const otpRoutes = require('./routes/otp.routes');
 
 // ══════════════════════════════════════════════════════════
 //  Initialize Express App
@@ -108,6 +109,7 @@ app.use('/api/follows', followRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/otp', otpRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
