@@ -3,9 +3,11 @@
 import React, { useState, useRef } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 
+import 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator, TransitionPresets } from '@react-navigation/stack';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { useFonts, PlayfairDisplay_700Bold, PlayfairDisplay_600SemiBold, PlayfairDisplay_500Medium } from '@expo-google-fonts/playfair-display';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
 
@@ -34,23 +36,29 @@ import SavedPostsScreen from './screens/SavedPostsScreen';
 import AIChatScreen from './screens/AIChatScreen';
 
 import SplashScreen from './screens/SplashScreen';
-import FloatingAIChat from './components/ui/FloatingAIChat';
 
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { ThemeProvider, useTheme } from './constants/ThemeContext';
 import { AuthProvider, useAuth } from './constants/AuthContext';
 import OfflineBanner from './components/ui/OfflineBanner';
 import HapticPressable from './components/ui/HapticPressable';
 
-const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator();
-const HomeStackNav = createNativeStackNavigator();
+const Stack = createStackNavigator();
+const Tab = createMaterialTopTabNavigator();
+const HomeStackNav = createStackNavigator();
+
+// Smooth transition preset — slide from right with subtle fade
+const smoothSlideTransition = {
+  ...TransitionPresets.SlideFromRightIOS,
+  gestureEnabled: true,
+  gestureDirection: 'horizontal',
+};
 
 function HomeStack() {
   return (
-    <HomeStackNav.Navigator screenOptions={{ headerShown: false }}>
+    <HomeStackNav.Navigator screenOptions={{ headerShown: false, ...smoothSlideTransition }}>
       <HomeStackNav.Screen name="HomeMain" component={HomeScreen} />
       <HomeStackNav.Screen name="ImageTranslator" component={ImageTranslatorScreen} />
       <HomeStackNav.Screen name="VoiceTranslator" component={VoiceTranslatorScreen} />
@@ -62,27 +70,15 @@ function HomeStack() {
   );
 }
 
-const ExploreStackNav = createNativeStackNavigator();
+const ExploreStackNav = createStackNavigator();
 
 function ExploreStack() {
   return (
-    <ExploreStackNav.Navigator screenOptions={{ headerShown: false }}>
+    <ExploreStackNav.Navigator screenOptions={{ headerShown: false, ...smoothSlideTransition }}>
       <ExploreStackNav.Screen name="ExploreMain" component={ExploreScreen} />
       <ExploreStackNav.Screen name="PlaceDetail" component={PlaceDetailScreen} />
       <ExploreStackNav.Screen name="SmartNavigation" component={SmartNavigationScreen} />
     </ExploreStackNav.Navigator>
-  );
-}
-
-// Custom Tab Bar Button to add Haptic feedback
-function CustomTabBarButton({ children, onPress }) {
-  return (
-    <HapticPressable
-      style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
-      onPress={onPress}
-    >
-      {children}
-    </HapticPressable>
   );
 }
 
@@ -91,14 +87,19 @@ function MainTabs() {
 
   return (
     <Tab.Navigator
+      tabBarPosition="bottom"
       screenOptions={({ route }) => ({
+        swipeEnabled: true,
         headerShown: false,
         tabBarShowLabel: true,
+        tabBarShowIcon: true,
         tabBarActiveTintColor: theme.colors.gold,
         tabBarInactiveTintColor: theme.colors.ash,
+        tabBarIndicatorStyle: { backgroundColor: 'transparent' },
         tabBarLabelStyle: {
           ...theme.typography.caption,
           fontSize: 10,
+          textTransform: 'none',
           marginTop: -2,
           marginBottom: 4,
         },
@@ -108,7 +109,7 @@ function MainTabs() {
           borderTopColor: 'rgba(201, 168, 76, 0.15)',
           elevation: 20,
           position: 'absolute',
-          bottom: 28,
+          bottom: 25,
           left: 16,
           right: 16,
           borderRadius: 24,
@@ -124,9 +125,9 @@ function MainTabs() {
         tabBarItemStyle: {
           borderRadius: 16,
           marginHorizontal: 4,
+          padding: 0,
         },
-        tabBarButton: (props) => <CustomTabBarButton {...props} />,
-        tabBarIcon: ({ color, size, focused }) => {
+        tabBarIcon: ({ color, focused }) => {
           let iconName = 'home';
           if (route.name === 'Home') iconName = focused ? 'compass' : 'compass-outline';
           else if (route.name === 'Explore') iconName = focused ? 'map' : 'map-outline';
@@ -134,14 +135,15 @@ function MainTabs() {
           else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
 
           return (
-            <View style={{ alignItems: 'center' }}>
+            <View style={{ alignItems: 'center', justifyContent: 'center' }}>
               {focused && (
                 <View style={{
                   width: 4,
                   height: 4,
                   borderRadius: 2,
                   backgroundColor: theme.colors.gold,
-                  marginBottom: 4,
+                  position: 'absolute',
+                  top: -8,
                   shadowColor: theme.colors.gold,
                   shadowOffset: { width: 0, height: 0 },
                   shadowOpacity: 0.8,
@@ -207,7 +209,12 @@ function AppContent() {
         }}
       >
         <StatusBar style="light" />
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Navigator screenOptions={{ 
+          headerShown: false, 
+          ...TransitionPresets.ModalSlideFromBottomIOS,
+          gestureEnabled: true,
+          gestureDirection: 'vertical',
+        }}>
           {user ? (
             <>
               <Stack.Screen name="MainTabs" component={MainTabs} />
@@ -227,9 +234,6 @@ function AppContent() {
             </>
           )}
         </Stack.Navigator>
-        
-        {/* Floating AI Chat — available on all screens except the chat itself */}
-        {user && activeRouteName !== 'AIChat' && <FloatingAIChat />}
       </NavigationContainer>
     </View>
   );
@@ -237,10 +241,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }

@@ -6,19 +6,26 @@ import {
   ActivityIndicator, Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useAuth } from '../constants/AuthContext';
 import { useTheme } from '../constants/ThemeContext';
 import useChat from '../hooks/useChat';
 import FloatingParticles from '../components/ui/FloatingParticles';
+import KeyboardShift from '../components/ui/KeyboardShift';
+import GifPickerModal from '../components/ui/GifPickerModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ChatScreen({ route, navigation }) {
   const { chatId, otherUserId, otherUserName, otherUserAvatar } = route.params;
   const { theme } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const { messages, loading, sendMessage } = useChat(chatId, user?.uid);
 
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const inputRef = useRef(null);
 
   // ═══ Send handler ═══
@@ -33,6 +40,42 @@ export default function ChatScreen({ route, navigation }) {
       console.log('Send error:', e);
     }
     setSending(false);
+  };
+
+  const handleAttachment = async () => {
+    Alert.alert('Upload', 'Choose an attachment type', [
+      { 
+        text: 'Image', 
+        onPress: async () => {
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            quality: 0.7,
+          });
+          if (!result.canceled) {
+            sendMessage(`[Image] ${result.assets[0].uri}`, otherUserId);
+          }
+        } 
+      },
+      { 
+        text: 'GIF', 
+        onPress: () => setShowGifPicker(true)
+      },
+      { 
+        text: 'Document', 
+        onPress: async () => {
+          const result = await DocumentPicker.getDocumentAsync({ type: '*/*' });
+          if (!result.canceled) {
+            sendMessage(`[File] ${result.assets[0].name}`, otherUserId);
+          }
+        } 
+      },
+      { text: 'Cancel', style: 'cancel' }
+    ]);
+  };
+
+  const handleSendGif = (gifUrl) => {
+    sendMessage(`[GIF] ${gifUrl}`, otherUserId);
   };
 
   // ═══ Format time ═══
@@ -109,12 +152,24 @@ export default function ChatScreen({ route, navigation }) {
               ? { backgroundColor: theme.colors.gold + '22', borderColor: theme.colors.gold + '44', borderBottomRightRadius: 4 }
               : { backgroundColor: theme.colors.midnight, borderColor: theme.colors.borderSilver, borderBottomLeftRadius: 4 },
           ]}>
-            <Text style={[theme.typography.body, {
-              color: isMe ? theme.colors.ivory : theme.colors.ivory,
-              fontSize: 14,
-            }]}>
-              {item.text}
-            </Text>
+            {item.text.startsWith('[GIF]') ? (
+              <Image 
+                source={{ uri: item.text.replace('[GIF] ', '') }} 
+                style={{ width: 200, height: 200, borderRadius: 12, marginBottom: 4 }} 
+              />
+            ) : item.text.startsWith('[Image]') ? (
+              <Image 
+                source={{ uri: item.text.replace('[Image] ', '') }} 
+                style={{ width: 200, height: 200, borderRadius: 12, marginBottom: 4 }} 
+              />
+            ) : (
+              <Text style={[theme.typography.body, {
+                color: isMe ? theme.colors.ivory : theme.colors.ivory,
+                fontSize: 14,
+              }]}>
+                {item.text}
+              </Text>
+            )}
             <Text style={[styles.timeText, {
               color: isMe ? theme.colors.goldMuted : theme.colors.ash,
             }]}>
@@ -127,6 +182,7 @@ export default function ChatScreen({ route, navigation }) {
   };
 
   return (
+    <KeyboardShift>
     <View style={[styles.container, { backgroundColor: theme.colors.obsidian }]}>
       <FloatingParticles count={3} />
 
@@ -188,48 +244,62 @@ export default function ChatScreen({ route, navigation }) {
       )}
 
       {/* Input Bar */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
-      >
-        <View style={[styles.inputBar, { backgroundColor: theme.colors.midnight, borderTopColor: theme.colors.borderSilver }]}>
-          <TextInput
-            ref={inputRef}
-            style={[theme.typography.body, styles.input, {
-              backgroundColor: theme.colors.obsidian,
-              color: theme.colors.ivory,
-              borderColor: theme.colors.borderSilver,
-            }]}
-            placeholder="Type a message..."
-            placeholderTextColor={theme.colors.ash}
-            value={text}
-            onChangeText={setText}
-            multiline
-            maxLength={1000}
-          />
+      <View style={[styles.inputBar, { 
+        backgroundColor: theme.colors.midnight, 
+        borderTopColor: theme.colors.borderSilver,
+        paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : insets.bottom + 24
+      }]}>
+        <TouchableOpacity
+          style={styles.attachBtn}
+          onPress={handleAttachment}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="add-circle" size={26} color={theme.colors.gold} />
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.sendBtn,
-              { backgroundColor: text.trim() ? theme.colors.gold : theme.colors.midnight },
-            ]}
-            onPress={handleSend}
-            disabled={!text.trim() || sending}
-            activeOpacity={0.7}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color={theme.colors.obsidian} />
-            ) : (
-              <Ionicons
-                name="send"
-                size={18}
-                color={text.trim() ? theme.colors.obsidian : theme.colors.ash}
-              />
-            )}
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+        <TextInput
+          ref={inputRef}
+          style={[theme.typography.body, styles.input, {
+            backgroundColor: theme.colors.obsidian,
+            color: theme.colors.ivory,
+            borderColor: theme.colors.borderSilver,
+          }]}
+          placeholder="Type a message..."
+          placeholderTextColor={theme.colors.ash}
+          value={text}
+          onChangeText={setText}
+          multiline
+          maxLength={1000}
+        />
+
+        <TouchableOpacity
+          style={[
+            styles.sendBtn,
+            { backgroundColor: text.trim() ? theme.colors.gold : theme.colors.midnight },
+          ]}
+          onPress={handleSend}
+          disabled={!text.trim() || sending}
+          activeOpacity={0.7}
+        >
+          {sending ? (
+            <ActivityIndicator size="small" color={theme.colors.obsidian} />
+          ) : (
+            <Ionicons
+              name="send"
+              size={18}
+              color={text.trim() ? theme.colors.obsidian : theme.colors.ash}
+            />
+          )}
+        </TouchableOpacity>
+      </View>
+
+      <GifPickerModal 
+        visible={showGifPicker} 
+        onClose={() => setShowGifPicker(false)} 
+        onSelect={handleSendGif} 
+      />
     </View>
+    </KeyboardShift>
   );
 }
 
@@ -303,9 +373,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 12,
     paddingVertical: 10,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 12,
     borderTopWidth: 1,
     gap: 8,
+  },
+  attachBtn: {
+    paddingBottom: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   input: {
     flex: 1,

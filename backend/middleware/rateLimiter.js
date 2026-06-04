@@ -22,7 +22,7 @@ const generalLimiter = rateLimit({
  */
 const loginLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX) || 10,
+  max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX) || 100,
   message: {
     success: false,
     message: 'Too many login attempts from this IP, please try again after an hour',
@@ -36,7 +36,7 @@ const loginLimiter = rateLimit({
  */
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 5,
+  max: process.env.NODE_ENV === 'production' ? 5 : 50,
   message: {
     success: false,
     message: 'Too many accounts created from this IP, please try again after an hour',
@@ -46,12 +46,12 @@ const registerLimiter = rateLimit({
 });
 
 /**
- * Rate limiter for AI chat — 20 requests per hour per IP.
+ * Rate limiter for AI chat — 200 requests per hour in development, 20 in production.
  * Protects against excessive token usage and API costs.
  */
 const aiLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20,
+  max: process.env.NODE_ENV === 'development' ? 200 : 20,
   message: {
     success: false,
     message: 'AI request limit reached. Please try again after an hour.',

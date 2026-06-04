@@ -17,9 +17,13 @@ export const getPosts = async (sort = 'recent', page = 1, limit = 15, userId = n
 
 /**
  * Create a new post
+ * @param {string} text
+ * @param {string|null} imageUrl - legacy single image URL
+ * @param {string} location
+ * @param {Array} media - array of { url, publicId, type, width, height }
  */
-export const createPost = async (text, imageUrl = null, location = 'My Location') => {
-  const { data } = await api.post('/posts', { text, imageUrl, location });
+export const createPost = async (text, imageUrl = null, location = 'My Location', media = []) => {
+  const { data } = await api.post('/posts', { text, imageUrl, location, media });
   return data;
 };
 

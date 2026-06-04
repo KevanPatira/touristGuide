@@ -1,15 +1,25 @@
 // server.js — Express entry point for TouristGuide backend
 // Load environment variables based on environment
-require('dotenv').config({
-  path: process.env.NODE_ENV === 'production' ? '.env' : '../.env'
-});
+require('dotenv').config();
 
-// Validate essential environment variables
-const requiredEnv = ['MONGODB_URI', 'JWT_SECRET', 'OPENROUTER_API_KEY'];
+// Use Google Public DNS to resolve MongoDB Atlas SRV records
+// (some networks block SRV queries needed by mongodb+srv:// URIs)
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+
+// Validate essential environment variables (MONGODB_URI is optional — falls back to in-memory)
+const requiredEnv = ['JWT_SECRET', 'OPENROUTER_API_KEY'];
+const placeholders = ['your_jwt_secret_here', 'your_openrouter_api_key_here'];
 const missing = requiredEnv.filter(key => !process.env[key]);
+const stillPlaceholder = requiredEnv.filter(key => process.env[key] && placeholders.includes(process.env[key]));
+
 if (missing.length > 0) {
   console.error(`❌ FATAL ERROR: Missing required environment variables: ${missing.join(', ')}`);
   process.exit(1);
+}
+
+if (stillPlaceholder.length > 0) {
+  console.warn(`\n⚠️  WARNING: The following env variables still have placeholder values: ${stillPlaceholder.join(', ')}`);
 }
 const express = require('express');
 const cors = require('cors');
@@ -31,6 +41,7 @@ const commentRoutes = require('./routes/comment.routes');
 const followRoutes = require('./routes/follow.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const chatRoutes = require('./routes/chat.routes');
+const mediaRoutes = require('./routes/media.routes');
 
 // ══════════════════════════════════════════════════════════
 //  Initialize Express App
@@ -70,7 +81,7 @@ app.use(cors({
 }));
 
 // Body parsing
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Request logging
@@ -96,6 +107,7 @@ app.use('/api/comments', commentRoutes);
 app.use('/api/follows', followRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chats', chatRoutes);
+app.use('/api/media', mediaRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

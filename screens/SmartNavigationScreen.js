@@ -8,7 +8,7 @@ import MapView, { Marker, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-
+import styles from './styles/SmartNavigationScreen.styles';
 const RECENT_KEY = '@nav_recent';
 
 const MODES = [
@@ -30,7 +30,7 @@ const fmtTime = (minutes) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
-export default function SmartNavigationScreen({ route }) {
+export default function SmartNavigationScreen({ route, navigation }) {
   const [searchText, setSearchText]         = useState('');
   const [suggestions, setSuggestions]       = useState([]);
   const [recentSearches, setRecentSearches] = useState([]);
@@ -401,6 +401,17 @@ export default function SmartNavigationScreen({ route }) {
   return (
     <View style={styles.container}>
 
+      {/* ── HEADER ───────────────────────────────────────────── */}
+      {!isExpanded && (
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation?.goBack()}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Smart Navigation</Text>
+          <View style={{ width: 40 }} />
+        </View>
+      )}
+
       {/* ── MAP ──────────────────────────────────────────────── */}
       <MapView
         ref={mapRef}
@@ -411,7 +422,7 @@ export default function SmartNavigationScreen({ route }) {
           latitudeDelta: 0.04, longitudeDelta: 0.04,
         }}
         showsUserLocation
-        showsMyLocationButton={!isExpanded}
+        showsMyLocationButton={false}
       >
         {/* Only destination pin */}
         {destination && destPlace && (
@@ -429,6 +440,23 @@ export default function SmartNavigationScreen({ route }) {
           />
         )}
       </MapView>
+
+      {/* ── RECENTRE BUTTON ──────────────────────────────────── */}
+      {!isExpanded && userLocation && (
+        <TouchableOpacity 
+          style={[styles.recentreBtn, { bottom: destPlace ? 280 : 120 }]} 
+          onPress={() => {
+            mapRef.current?.animateToRegion({
+              latitude: userLocation.latitude,
+              longitude: userLocation.longitude,
+              latitudeDelta: 0.04,
+              longitudeDelta: 0.04,
+            }, 1000);
+          }}
+        >
+          <Ionicons name="locate" size={24} color="#161b2b" />
+        </TouchableOpacity>
+      )}
 
       {/* ── COMPACT SEARCH BAR ───────────────────────────────── */}
       {!isExpanded && (
@@ -716,121 +744,3 @@ export default function SmartNavigationScreen({ route }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#050b18' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#050b18' },
-  loadingText: { color: '#fff', marginTop: 12, fontSize: 15 },
-  map: { flex: 1 },
-
-  compactBar: {
-    position: 'absolute', top: 52, left: 16, right: 16,
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#161b2bF8', borderRadius: 18,
-    paddingHorizontal: 16, paddingVertical: 14,
-    shadowColor: '#000', shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: 4 }, shadowRadius: 10, elevation: 8, gap: 10,
-  },
-  compactText: { flex: 1, color: '#ccc', fontSize: 14 },
-  tapHint: { backgroundColor: '#ff7a4522', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
-  tapHintText: { color: '#ff7a45', fontSize: 11, fontWeight: '700' },
-
-  expandedPanel: {
-    position: 'absolute', top: 0, left: 0, right: 0,
-    backgroundColor: '#0d1221',
-    paddingTop: Platform.OS === 'ios' ? 56 : 48,
-    paddingHorizontal: 16, paddingBottom: 10,
-    zIndex: 20,
-    shadowColor: '#000', shadowOpacity: 0.7,
-    shadowOffset: { width: 0, height: 6 }, shadowRadius: 14, elevation: 14,
-  },
-  expandedHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  inputBox: {
-    flex: 1, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#1f2740', borderRadius: 14,
-    paddingHorizontal: 14, paddingVertical: 11, gap: 8,
-  },
-  input: { flex: 1, color: '#fff', fontSize: 15, padding: 0 },
-  fromChip: {
-    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
-    marginLeft: 50, backgroundColor: '#161b2b', borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 5, marginBottom: 8, gap: 5,
-  },
-  fromText: { color: '#aaa', fontSize: 12, maxWidth: 240 },
-
-  dropdown: { backgroundColor: '#161b2b', borderRadius: 16, overflow: 'hidden', marginBottom: 4 },
-  sectionLabel: { color: '#777', fontSize: 12, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 },
-  noResult: { color: '#555', fontSize: 13, padding: 16 },
-  typeMoreHint: { color: '#555', fontSize: 12, paddingHorizontal: 16, paddingVertical: 8 },
-  sugRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11, gap: 12 },
-  sep: { height: 1, backgroundColor: '#1e2540', marginHorizontal: 14 },
-  catDot: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
-  sugName: { color: '#ddd', fontSize: 13, fontWeight: '500' },
-  matchBold: { color: '#ff7a45', fontWeight: '800' },
-  sugSub: { color: '#666', fontSize: 11, marginTop: 1 },
-  hintBox: { alignItems: 'center', paddingVertical: 20, gap: 6 },
-  hintText: { color: '#3a4560', fontSize: 13, fontWeight: '600' },
-  hintSub: { color: '#2a3352', fontSize: 12 },
-
-  bottomCard: {
-    position: 'absolute', bottom: 100, left: 0, right: 0,
-    backgroundColor: '#161b2b', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
-    marginHorizontal: 10,
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20,
-    shadowColor: '#000', shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: -4 }, shadowRadius: 12, elevation: 10,
-  },
-  destHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  routeIconBg: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-  destName: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  destSub: { color: '#777', fontSize: 11, marginTop: 2 },
-  transportRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
-  transportCard: {
-    flex: 1, alignItems: 'center', backgroundColor: '#1f2740',
-    borderRadius: 16, paddingVertical: 14, paddingHorizontal: 8,
-    borderWidth: 1.5, borderColor: 'transparent',
-  },
-  transportCardActive: { borderColor: '#ff7a45', backgroundColor: '#ff7a4512' },
-  transportIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  transportTime: { color: '#fff', fontSize: 18, fontWeight: '800' },
-  transportDist: { color: '#aaa', fontSize: 12, marginTop: 2 },
-  transportLabel: { color: '#666', fontSize: 11, fontWeight: '600', marginTop: 4 },
-  nearbySection: { marginBottom: 10, gap: 8 },
-  nearbyStopRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#1f2740', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
-  nearbyStopIcon: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  nearbyStopName: { color: '#ddd', fontSize: 13, fontWeight: '600' },
-  nearbyStopSub: { color: '#777', fontSize: 11, marginTop: 1 },
-  transitSectionTitle: { color: '#999', fontSize: 12, fontWeight: '700', letterSpacing: 0.5, marginBottom: 2 },
-  navigateHintRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 6 },
-  navigateHint: { fontSize: 10, fontWeight: '600' },
-  cabCard: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#1f2740', borderRadius: 16, padding: 14,
-  },
-  cabLeft: { flexDirection: 'row', alignItems: 'center' },
-  cabTitle: { color: '#ddd', fontSize: 13, fontWeight: '600' },
-  cabSub: { color: '#666', fontSize: 11, marginTop: 2 },
-  cabPriceBox: { alignItems: 'flex-end' },
-  cabPrice: { color: '#9C27B0', fontSize: 17, fontWeight: '800' },
-  cabNote: { color: '#666', fontSize: 10, marginTop: 2 },
-
-  highlightCard: {
-    position: 'absolute', bottom: 100, left: 0, right: 0,
-    backgroundColor: '#161b2b', borderRadius: 24,
-    marginHorizontal: 10,
-    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 20,
-    shadowColor: '#000', shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: -4 }, shadowRadius: 12, elevation: 10,
-  },
-  highlightHeader: { flexDirection: 'row', alignItems: 'center' },
-  highlightIconBg: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
-  highlightName: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  highlightSub: { color: '#888', fontSize: 12, marginTop: 2 },
-  highlightDesc: { color: '#aaa', fontSize: 13, marginTop: 10, lineHeight: 19 },
-  highlightFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
-  highlightRankBadge: { backgroundColor: '#ffe7d6', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  highlightRankText: { color: '#d45a1b', fontSize: 11, fontWeight: '600' },
-  highlightFromExplore: { color: '#555', fontSize: 11 },
-});

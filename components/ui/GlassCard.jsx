@@ -1,5 +1,5 @@
 // components/ui/GlassCard.jsx
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, Pressable, Animated, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../constants/ThemeContext';
@@ -7,13 +7,14 @@ import { useTheme } from '../../constants/ThemeContext';
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /**
- * Premium card container with glass effect and animated press.
- * @param {ReactNode} children - Content
- * @param {object} style - Optional extra styles for the container
- * @param {function} onPress - Press handler
- * @param {boolean} glowOnPress - Whether border brightens on press
+ * Premium card container with glass effect, animated press, and optional ambient glow.
+ * @param {ReactNode} children    - Content
+ * @param {object}    style       - Optional extra styles for the container
+ * @param {function}  onPress     - Press handler
+ * @param {boolean}   glowOnPress - Whether border brightens on press
+ * @param {string}    glowColor   - Optional colour for a pulsing ambient glow behind the card
  */
-export default function GlassCard({ children, style, onPress, glowOnPress = true }) {
+export default function GlassCard({ children, style, onPress, glowOnPress = true, glowColor }) {
   const { theme } = useTheme();
   
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -58,6 +59,26 @@ export default function GlassCard({ children, style, onPress, glowOnPress = true
     outputRange: ['rgba(201, 168, 76, 0.2)', 'rgba(201, 168, 76, 0.5)'],
   });
 
+  // ── Ambient Glow Pulse ──
+  const glowPulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!glowColor) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowPulse, { toValue: 1, duration: 2000, useNativeDriver: false }),
+        Animated.timing(glowPulse, { toValue: 0, duration: 2000, useNativeDriver: false }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [glowColor]);
+
+  const glowOpacity = glowPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.08, 0.22],
+  });
+
   const cardContent = (
     <>
       {/* Top Edge Highlight */}
@@ -72,22 +93,39 @@ export default function GlassCard({ children, style, onPress, glowOnPress = true
   );
 
   return (
-    <AnimatedPressable
-      onPress={onPress}
-      onPressIn={onPress && handlePressIn}
-      onPressOut={onPress && handlePressOut}
-      disabled={!onPress}
-      style={[
-        styles.container,
-        {
-          borderColor: onPress && glowOnPress ? borderColor : 'rgba(201, 168, 76, 0.2)',
-          transform: [{ scale: scaleAnim }],
-        },
-        style,
-      ]}
-    >
-      {cardContent}
-    </AnimatedPressable>
+    <View style={{ position: 'relative' }}>
+      {/* Ambient Glow Layer */}
+      {glowColor && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: -10,
+            left: -10,
+            right: -10,
+            bottom: -10,
+            borderRadius: 30,
+            backgroundColor: glowColor,
+            opacity: glowOpacity,
+          }}
+        />
+      )}
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={onPress && handlePressIn}
+        onPressOut={onPress && handlePressOut}
+        disabled={!onPress}
+        style={[
+          styles.container,
+          {
+            borderColor: onPress && glowOnPress ? borderColor : 'rgba(201, 168, 76, 0.2)',
+            transform: [{ scale: scaleAnim }],
+          },
+          style,
+        ]}
+      >
+        {cardContent}
+      </AnimatedPressable>
+    </View>
   );
 }
 

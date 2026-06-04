@@ -18,7 +18,8 @@ const {
   EXPO_PUBLIC_FIREBASE_PROJECT_ID,
   EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
   EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  EXPO_PUBLIC_FIREBASE_APP_ID
+  EXPO_PUBLIC_FIREBASE_APP_ID,
+  EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID
 } = process.env;
 
 // Validate that required Firebase variables are present
@@ -33,6 +34,7 @@ const firebaseConfig = {
   storageBucket: EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: EXPO_PUBLIC_FIREBASE_APP_ID,
+  ...(EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID && { measurementId: EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID })
 };
 
 // Initialize Firebase (only if credentials are provided)

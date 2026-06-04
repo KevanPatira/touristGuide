@@ -2,7 +2,7 @@
 const axios = require('axios');
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL_ID = 'minimax/minimax-m2.5:free';
+const DEFAULT_MODEL_ID = 'openrouter/auto'; // Automatically routes to the best available free model
 
 // System prompt that contextualizes the AI as a travel assistant
 const SYSTEM_PROMPT = `You are TravelMate AI — a premium, knowledgeable travel assistant built into the TouristGuide app. Your expertise covers:
@@ -25,9 +25,10 @@ Guidelines:
  * Send a prompt to OpenRouter and return the AI response text.
  * @param {string} prompt - User's message/question
  * @param {Array} conversationHistory - Optional previous messages for context
+ * @param {string} modelId - Model to use based on router
  * @returns {Promise<string>} AI response text
  */
-const askAI = async (prompt, conversationHistory = []) => {
+const askAI = async (prompt, conversationHistory = [], modelId = DEFAULT_MODEL_ID) => {
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
     throw new Error('Prompt is required and must be a non-empty string');
   }
@@ -55,7 +56,7 @@ const askAI = async (prompt, conversationHistory = []) => {
       const response = await axios.post(
         OPENROUTER_API_URL,
         {
-          model: MODEL_ID,
+          model: modelId,
           messages,
           max_tokens: 1024,
           temperature: 0.7,
@@ -68,7 +69,7 @@ const askAI = async (prompt, conversationHistory = []) => {
             'HTTP-Referer': 'https://touristguide.app',
             'X-Title': 'TouristGuide AI Assistant',
           },
-          timeout: 15000, // 15s timeout
+          timeout: 30000, // 30s timeout for free models
         }
       );
 
@@ -78,8 +79,14 @@ const askAI = async (prompt, conversationHistory = []) => {
         throw new Error('No response content received from AI model');
       }
 
-      console.log(`[AI Service] Received response in ${Date.now() - startTime}ms`);
-      return reply.trim();
+      console.log(`[AI Service] Received response in ${Date.now() - startTime}ms using ${modelId}`);
+      
+      // Post-processing
+      let finalReply = reply.trim();
+      // Remove any trailing/leading empty lines
+      finalReply = finalReply.replace(/^\s*[\r\n]/gm, '');
+      
+      return finalReply;
     } catch (error) {
       attempt++;
       let errorMessage = 'Unknown error';
@@ -87,12 +94,11 @@ const askAI = async (prompt, conversationHistory = []) => {
 
       if (error.response) {
         const status = error.response.status;
-        errorMessage = `HTTP ${status}: ${error.response.data?.error?.message || 'AI service error'}`;
+        const providerError = error.response.data?.error?.message || error.response.data?.message || 'AI service error';
+        errorMessage = `HTTP ${status}: ${providerError}`;
         
-        // Retry on rate limits (429) and server errors (5xx)
-        if (status === 429 || status >= 500) {
-          shouldRetry = true;
-        }
+        console.error(`[AI Service] Provider Error Details:`, JSON.stringify(error.response.data, null, 2));
+        shouldRetry = true;
       } else if (error.code === 'ECONNABORTED') {
         errorMessage = 'Request timed out';
         shouldRetry = true;

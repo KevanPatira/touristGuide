@@ -6,6 +6,7 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 function Particle({ color }) {
   const animValue = useRef(new Animated.Value(0)).current;
+  const pulseValue = useRef(new Animated.Value(0)).current;
 
   // Randomize characteristics once per particle mount
   const config = useMemo(() => {
@@ -16,18 +17,29 @@ function Particle({ color }) {
       duration: Math.random() * 5000 + 4000, // 4s to 9s
       maxOpacity: Math.random() * 0.3 + 0.1, // 0.1 to 0.4
       delay: Math.random() * 2000,
+      pulseDuration: Math.random() * 1500 + 1000, // 1s to 2.5s
     };
   }, []);
 
   useEffect(() => {
-    const anim = Animated.timing(animValue, {
-      toValue: 1,
-      duration: config.duration,
-      delay: config.delay,
-      useNativeDriver: true,
-    });
-    Animated.loop(anim).start();
-  }, [animValue, config]);
+    // Float animation
+    Animated.loop(
+      Animated.timing(animValue, {
+        toValue: 1,
+        duration: config.duration,
+        delay: config.delay,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    // Breathe pulse
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseValue, { toValue: 1, duration: config.pulseDuration, useNativeDriver: true }),
+        Animated.timing(pulseValue, { toValue: 0, duration: config.pulseDuration, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [animValue, pulseValue, config]);
 
   const translateY = animValue.interpolate({
     inputRange: [0, 1],
@@ -44,6 +56,11 @@ function Particle({ color }) {
     outputRange: [0, config.maxOpacity, config.maxOpacity, 0],
   });
 
+  const scale = pulseValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.8],
+  });
+
   return (
     <Animated.View
       style={{
@@ -52,7 +69,7 @@ function Particle({ color }) {
         height: config.size,
         borderRadius: config.size / 2,
         backgroundColor: color,
-        transform: [{ translateY }, { translateX }],
+        transform: [{ translateY }, { translateX }, { scale }],
         opacity,
       }}
     />

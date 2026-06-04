@@ -1,0 +1,89 @@
+# TouristGuide Codebase Architecture Overview
+
+This document provides a comprehensive overview of the **TouristGuide** codebase, detailing the folder structure, core components, and architectural patterns used in both the frontend and backend.
+
+## Project Structure Diagram
+
+```mermaid
+mindmap
+  root((TouristGuide))
+    Frontend (React Native / Expo)
+      App.js[App Entry Point]
+      Screens (20+ Screens)
+        Home/Explore/Discover
+        Image/Voice Translator
+        Smart Navigation
+        AI Chat/DM
+        Auth (Login/SignUp)
+        Community/Profile
+      Components
+        UI (Glassmorphism & Premium)
+          GlassCard
+          PressableGoldButton
+          FloatingAIChat
+          AnimatedHeroCard
+      Services (API Integration)
+        AI/Translation
+        Auth/Chat
+        Community/Posts
+      Hooks (State Management)
+        useAI/useChat
+        useFollow/usePosts
+      Constants
+        Theme/AuthContext
+        FirebaseConfig
+    Backend (Node.js / Express)
+      server.js[Server Entry Point]
+      Controllers (Business Logic)
+        AI/Translation
+        Auth/User
+        Chat/Post/Review
+      Models (MongoDB / Mongoose)
+        User/Post/Chat
+        Destination/Review
+      Routes (API Endpoints)
+      Middleware (Auth/Error Handling)
+      Config (DB Connection)
+      Seed (Database Seeding)
+    Assets & Config
+      assets (Images/Fonts)
+      design-system (Tokens)
+      .env (Secrets)
+```
+
+## Folder Breakdown
+
+### 1. Frontend (Root)
+The frontend is built with **React Native** and **Expo**, focusing on a premium UI/UX with glassmorphism and smooth animations.
+
+- **`App.js`**: The main entry point that sets up navigation (React Navigation) and provides global contexts (Auth, Theme).
+- **`screens/`**: Contains all full-page views.
+  - **Travel Tools**: `ImageTranslatorScreen.js`, `VoiceTranslatorScreen.js`, `WeatherScreen.js`, `CurrencyConverterScreen.js`.
+  - **Core**: `HomeScreen.js`, `ExploreScreen.js`, `SmartNavigationScreen.js`.
+  - **Social**: `CommunityScreen.js`, `ChatScreen.js`, `UserProfileScreen.js`.
+- **`components/ui/`**: A library of highly polished, reusable UI components.
+  - Features like `GlassCard.jsx`, `AmbientGlow.jsx`, and `GoldShimmerText.jsx` define the "Premium" aesthetic.
+- **`services/`**: Modular API clients using `axios` to communicate with the backend.
+- **`hooks/`**: Custom hooks for managing complex local state and side effects (e.g., `useChat.js`).
+- **`constants/`**: Holds theme definitions, context providers, and static configuration.
+
+### 2. Backend (`/backend`)
+The backend is a **Node.js/Express** server following a modular MVC-like pattern.
+
+- **`server.js`**: Initializes the Express app, connects to MongoDB, and registers routes.
+- **`controllers/`**: Contains the logic for each feature (e.g., handling translation requests via AI).
+- **`models/`**: Defines the data schema for MongoDB using Mongoose (Users, Posts, Destiantions, etc.).
+- **`routes/`**: Maps URL endpoints to specific controller functions.
+- **`middleware/`**: Handles cross-cutting concerns like JWT authentication (`auth.middleware.js`) and centralized error handling.
+- **`seed/`**: Scripts for populating the database with initial destination data.
+
+### 3. Cross-Cutting & Configuration
+- **`.env`**: Stores sensitive API keys (OpenRouter, OCR, MongoDB URI).
+- **`design-system/`**: Contains the `MASTER.md` and tokens that define the visual language of the app.
+- **`.agent/`**: Internal directory for the AI assistant's skills and project-specific knowledge.
+
+## Key Architectural Patterns
+1. **Separation of Concerns**: UI is decoupled from logic through Services and Hooks.
+2. **Centralized Security**: API keys are refactored to environment variables, and backend routes are protected via JWT middleware.
+3. **Design System Driven**: Consistency is maintained through a centralized set of UI components and design tokens.
+4. **AI-First**: Deep integration of AI services (OpenRouter) for translation, navigation, and chat features.

@@ -19,8 +19,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../constants/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Markdown from 'react-native-markdown-display';
+import * as Clipboard from 'expo-clipboard';
 import useAI from '../hooks/useAI';
 import FloatingParticles from '../components/ui/FloatingParticles';
+import KeyboardShift from '../components/ui/KeyboardShift';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -151,12 +154,40 @@ function MessageBubble({ message, theme }) {
           colors={['rgba(201, 168, 76, 0.06)', 'rgba(17, 24, 39, 0.95)']}
           style={styles.aiBubble}
         >
-          <Text style={[theme.typography.body, { color: theme.colors.ivory, fontSize: 14, lineHeight: 22 }]}>
+          <Markdown
+            style={{
+              body: { ...theme.typography.body, color: theme.colors.ivory, fontSize: 14, lineHeight: 22 },
+              paragraph: { marginTop: 0, marginBottom: 8 },
+              strong: { fontFamily: 'Inter-Bold', color: theme.colors.gold },
+              em: { fontFamily: 'Inter-Italic' },
+              list_item: { marginVertical: 4 },
+              bullet_list: { marginBottom: 8 },
+              ordered_list: { marginBottom: 8 },
+              heading1: { fontSize: 20, fontFamily: 'Inter-Bold', color: theme.colors.gold, marginVertical: 8 },
+              heading2: { fontSize: 18, fontFamily: 'Inter-Bold', color: theme.colors.gold, marginVertical: 8 },
+              heading3: { fontSize: 16, fontFamily: 'Inter-Bold', color: theme.colors.gold, marginVertical: 8 },
+              code_inline: { backgroundColor: 'rgba(201, 168, 76, 0.1)', color: theme.colors.goldMuted, borderRadius: 4, padding: 2 },
+              code_block: { backgroundColor: 'rgba(0, 0, 0, 0.3)', padding: 10, borderRadius: 8, color: theme.colors.ivory },
+              table: { borderColor: theme.colors.borderSilver, borderWidth: 1, borderRadius: 6 },
+              tr: { borderBottomWidth: 1, borderColor: theme.colors.borderSilver },
+              th: { padding: 6, backgroundColor: 'rgba(201, 168, 76, 0.1)', fontFamily: 'Inter-Bold', color: theme.colors.gold },
+              td: { padding: 6, color: theme.colors.ivory }
+            }}
+          >
             {message.content}
-          </Text>
-          <Text style={[theme.typography.caption, styles.timestamp, { color: theme.colors.ash }]}>
-            {formatTime(message.timestamp)}
-          </Text>
+          </Markdown>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 8 }}>
+            <TouchableOpacity 
+              onPress={() => Clipboard.setStringAsync(message.content)}
+              style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, borderWidth: 1, borderColor: theme.colors.borderSilver }}
+            >
+              <Ionicons name="copy-outline" size={12} color={theme.colors.ash} style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 10, color: theme.colors.ash }}>Copy</Text>
+            </TouchableOpacity>
+            <Text style={[theme.typography.caption, styles.timestamp, { color: theme.colors.ash, marginTop: 0 }]}>
+              {formatTime(message.timestamp)}
+            </Text>
+          </View>
         </LinearGradient>
       </View>
     </Animated.View>
@@ -278,6 +309,7 @@ export default function AIChatScreen() {
   const keyExtractor = useCallback((item) => item.id, []);
 
   return (
+    <KeyboardShift>
     <View style={styles.container}>
       {/* Background */}
       <LinearGradient
@@ -318,12 +350,10 @@ export default function AIChatScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── CHAT AREA ────────────────────────────────────── */}
-      <KeyboardAvoidingView
-        style={styles.chatArea}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
-      >
+        {/* ── CHAT AREA ────────────────────────────────────── */}
+        <View
+          style={styles.chatArea}
+        >
         {messages.length === 0 && !loading ? (
           <EmptyState theme={theme} onSuggestionPress={handleSuggestion} />
         ) : (
@@ -339,8 +369,8 @@ export default function AIChatScreen() {
           />
         )}
 
-        {/* ── INPUT BAR ──────────────────────────────────── */}
-        <View style={[styles.inputBar, { borderTopColor: theme.colors.borderSilver, paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 14) : insets.bottom + 14 }]}>
+          {/* ── INPUT BAR ──────────────────────────────────── */}
+          <View style={[styles.inputBar, { borderTopColor: theme.colors.borderSilver, paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : insets.bottom + 24 }]}>
           <View style={[styles.inputWrapper, { backgroundColor: theme.colors.glassBg, borderColor: theme.colors.borderGold }]}>
             <TextInput
               ref={inputRef}
@@ -380,9 +410,10 @@ export default function AIChatScreen() {
               )}
             </TouchableOpacity>
           </View>
+          </View>
         </View>
-      </KeyboardAvoidingView>
     </View>
+    </KeyboardShift>
   );
 }
 

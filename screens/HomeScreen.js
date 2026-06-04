@@ -10,6 +10,7 @@ import {
   ScrollView,
   Dimensions,
   Animated,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -41,9 +42,9 @@ const heroSlides = [
     subtitle: 'The City of Light awaits your adventure',
   },
   {
-    image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&q=70',
-    title: 'Tokyo, Japan',
-    subtitle: 'Ancient traditions meet neon-lit modernity',
+    image: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=800&q=70',
+    title: 'Japan',
+    subtitle: 'Where cherry blossoms meet ancient temples',
   },
   {
     image: 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=70',
@@ -279,18 +280,6 @@ export default function HomeScreen() {
   const { unreadCount } = useNotifications(user?.uid);
   const greeting = getGreeting();
 
-  // FAB animation
-  const fabScale = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.spring(fabScale, {
-      toValue: 1,
-      delay: 1200,
-      speed: 10,
-      bounciness: 12,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
   return (
     <View style={styles.container}>
       {/* ── BACKGROUND ───────────────────────────────── */}
@@ -300,52 +289,65 @@ export default function HomeScreen() {
       />
       <FloatingParticles count={18} color={theme.colors.borderGold} />
 
+      {/* ── FIXED HEADER BAR — stays pinned on scroll ── */}
+      <View style={[styles.fixedHeaderBar, { backgroundColor: 'rgba(10, 15, 28, 0.95)', borderBottomColor: theme.colors.borderGold }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={[theme.typography.caption, { color: theme.colors.emerald, marginBottom: 2 }]}>
+            {greeting.text} {greeting.emoji}
+          </Text>
+          <GoldShimmerText
+            text="Where to next?"
+            style={theme.typography.displayL}
+            delay={300}
+          />
+        </View>
+
+        {/* Icon row — AI + Notification, same size, same level */}
+        <View style={styles.headerIconRow}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('AIChat')}
+            style={[styles.headerIconBtn, {
+              backgroundColor: theme.colors.glassBg,
+              borderColor: theme.colors.glassStroke,
+              borderWidth: 1,
+            }]}
+          >
+            <Ionicons name="chatbubble-ellipses" size={20} color={theme.colors.gold} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.headerIconBtn, {
+              backgroundColor: theme.colors.glassBg,
+              borderColor: theme.colors.glassStroke,
+              borderWidth: 1,
+            }]}
+            onPress={() => navigation.navigate('Notifications')}
+          >
+            <Ionicons name="notifications-outline" size={20} color={theme.colors.gold} />
+            {unreadCount > 0 && (
+              <View style={[styles.bellBadge, { backgroundColor: theme.colors.crimson }]}>
+                <Text style={styles.bellBadgeText}>{unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* ── SCROLLABLE CONTENT ────────────────────────── */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Header ─────────────────────────────────── */}
-        <View style={styles.headerArea}>
-          <View style={styles.headerTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={[theme.typography.caption, { color: theme.colors.emerald, marginBottom: 4 }]}>
-                {greeting.text} {greeting.emoji}
-              </Text>
-              <GoldShimmerText
-                text="Where to next?"
-                style={theme.typography.displayL}
-                delay={300}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.bellButton, {
-                backgroundColor: theme.colors.glassBg,
-                borderColor: theme.colors.glassStroke,
-                borderWidth: 1,
-              }]}
-              onPress={() => navigation.navigate('Notifications')}
-            >
-              <Ionicons name="notifications-outline" size={24} color={theme.colors.gold} />
-              {unreadCount > 0 && (
-                <View style={[styles.bellBadge, { backgroundColor: theme.colors.crimson }]}>
-                  <Text style={styles.bellBadgeText}>{unreadCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {/* Typing subtitle */}
-          <View style={{ marginTop: 8 }}>
-            <TypingText
-              phrases={travelQuotes}
-              typingSpeed={50}
-              pauseDuration={2500}
-              style={[theme.typography.body, { color: theme.colors.parchment }]}
-            />
-          </View>
+        {/* Typing subtitle — scrolls with content */}
+        <View style={{ paddingHorizontal: 20, marginTop: 8, marginBottom: 8 }}>
+          <TypingText
+            phrases={travelQuotes}
+            typingSpeed={50}
+            pauseDuration={2500}
+            style={[theme.typography.body, { color: theme.colors.parchment }]}
+          />
         </View>
 
         {/* ── Hero Carousel ──────────────────────────── */}
@@ -410,24 +412,6 @@ export default function HomeScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* ── Floating AI FAB ───────────────────────────── */}
-      <Animated.View style={[styles.fab, { transform: [{ scale: fabScale }] }]}>
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('AIChat')}
-          style={styles.fabInner}
-        >
-          <LinearGradient
-            colors={[theme.colors.gold, theme.colors.goldMuted]}
-            style={styles.fabGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Ionicons name="sparkles" size={26} color={theme.colors.obsidian} />
-          </LinearGradient>
-        </TouchableOpacity>
-      </Animated.View>
-
 
     </View>
   );
@@ -444,19 +428,23 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 20 },
-  headerArea: {
-    paddingTop: 60,
+  fixedHeaderBar: {
+    paddingTop: Platform.OS === 'ios' ? 56 : 44,
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    zIndex: 10,
-  },
-  headerTop: {
+    paddingBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    zIndex: 100,
+    borderBottomWidth: 1,
   },
-  bellButton: {
-    width: 44, height: 44, borderRadius: 22,
+  headerIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  headerIconBtn: {
+    width: 40, height: 40, borderRadius: 20,
     justifyContent: 'center', alignItems: 'center',
   },
   bellBadge: {
@@ -571,32 +559,5 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
 
-  // FAB
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    zIndex: 100,
-  },
-  fabInner: {
-    borderRadius: 30,
-    overflow: 'hidden',
-    // Shadow
-    shadowColor: '#C9A84C',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  fabGradient: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
 
-  unreadDot: {
-    width: 8, height: 8, borderRadius: 4, marginLeft: 8,
-  },
 });

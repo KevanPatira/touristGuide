@@ -5,7 +5,7 @@ import {
   FlatList, Image, KeyboardAvoidingView, Platform,
   Alert, ActivityIndicator, RefreshControl, Modal, Dimensions, Animated,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useAuth } from '../constants/AuthContext';
@@ -15,9 +15,11 @@ import usePosts from '../hooks/usePosts';
 
 import FloatingParticles from '../components/ui/FloatingParticles';
 import PostCard from '../components/ui/PostCard';
+import ComposerModal from '../components/ui/ComposerModal';
+import FloatingAIChat from '../components/ui/FloatingAIChat';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const tabs = ['Recent', 'Popular'];
+const tabs = ['For You', 'Trending', 'Nearby', 'Solo Travellers'];
 
 export default function CommunityScreen({ navigation }) {
   const { theme } = useTheme();
@@ -26,7 +28,7 @@ export default function CommunityScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('Recent');
   const [showComposer, setShowComposer] = useState(false);
   const [text, setText] = useState('');
-  const [imageUri, setImageUri] = useState(null);
+  const [mediaItems, setMediaItems] = useState([]);
   const [postLocation, setPostLocation] = useState('');
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
@@ -34,8 +36,9 @@ export default function CommunityScreen({ navigation }) {
   const { unreadCount } = useNotifications(user?.uid);
   const {
     posts, loading, refreshing, hasMore,
+    uploadProgress, isUploading,
     fetchPosts, loadMore, onRefresh,
-    createPost, likePost, unlikePost,
+    createPost, likePost, unlikePost, deletePost,
   } = usePosts();
 
   // FAB animation
@@ -46,19 +49,23 @@ export default function CommunityScreen({ navigation }) {
 
   // ═══ Fetch posts when tab changes ═══
   useEffect(() => {
-    const sort = activeTab === 'Popular' ? 'popular' : 'recent';
+    const sort = activeTab === 'Trending' ? 'popular' : 'recent';
     fetchPosts(sort);
   }, [activeTab, fetchPosts]);
 
-  // ═══ Image Picker ═══
-  const pickImage = async () => {
+  // ═══ Media Picker ═══
+  const pickMedia = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
+      mediaTypes: ['images', 'videos'],
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
       quality: 0.7,
     });
     if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
+      setMediaItems(result.assets.map(asset => ({
+        uri: asset.uri,
+        type: asset.type || (asset.uri.endsWith('.mp4') ? 'video' : 'image'),
+      })));
     }
   };
 
@@ -88,7 +95,7 @@ export default function CommunityScreen({ navigation }) {
 
   // ═══ Create Post (MongoDB) ═══
   const handlePost = async () => {
-    if (!text.trim() && !imageUri) return;
+    if (!text.trim() && mediaItems.length === 0) return;
     if (!user) {
       Alert.alert('Error', 'You must be logged in to post.');
       return;
@@ -96,12 +103,11 @@ export default function CommunityScreen({ navigation }) {
 
     setIsPosting(true);
     try {
-      const imageUrl = imageUri || null;
-      await createPost(text.trim(), imageUrl, postLocation || 'Earth');
+      await createPost(text.trim(), mediaItems, postLocation || 'Earth');
 
       // Reset & close
       setText('');
-      setImageUri(null);
+      setMediaItems([]);
       setPostLocation('');
       setShowComposer(false);
     } catch (e) {
@@ -126,42 +132,63 @@ export default function CommunityScreen({ navigation }) {
       onAuthorPress={handleAuthorPress}
       onLike={likePost}
       onUnlike={unlikePost}
+      onDelete={deletePost}
     />
   );
 
   // ═══ Stories-style top bar (compact) ═══
   const renderHeader = () => (
     <View style={{ paddingBottom: 4 }}>
-      {/* Instagram-style tab pills */}
-      <View style={styles.tabRow}>
-        {tabs.map((t) => {
-          const isActive = activeTab === t;
-          return (
-            <TouchableOpacity
-              key={t}
-              style={[
-                styles.tabPill,
-                isActive
-                  ? { backgroundColor: theme.colors.gold }
-                  : { backgroundColor: theme.colors.midnight, borderWidth: 1, borderColor: theme.colors.borderSilver },
-              ]}
-              onPress={() => setActiveTab(t)}
-            >
-              <Ionicons
-                name={t === 'Recent' ? 'time-outline' : 'flame-outline'}
-                size={14}
-                color={isActive ? theme.colors.obsidian : theme.colors.gold}
-                style={{ marginRight: 4 }}
-              />
-              <Text style={[theme.typography.label, {
-                color: isActive ? theme.colors.obsidian : theme.colors.gold,
-                fontSize: 12,
-              }]}>
-                {t}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+      {/* Search Bar */}
+      <TouchableOpacity 
+        style={{ marginHorizontal: 16, marginTop: 12, marginBottom: 4, flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.midnight, borderWidth: 1, borderColor: theme.colors.borderSilver, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 }}
+        onPress={() => navigation.navigate('Discover')}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="search" size={18} color={theme.colors.ash} style={{ marginRight: 8 }} />
+        <Text style={[theme.typography.body, { color: theme.colors.ash }]}>Find travel buddies or usernames...</Text>
+      </TouchableOpacity>
+      
+      {/* Filter Belt */}
+      <View>
+        <FlatList 
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabRow}
+          data={tabs}
+          keyExtractor={(item) => item}
+          renderItem={({ item: t }) => {
+            const isActive = activeTab === t;
+            let iconName = 'star-outline';
+            if (t === 'Trending') iconName = 'flame-outline';
+            if (t === 'Nearby') iconName = 'location-outline';
+            if (t === 'Solo Travellers') iconName = 'walk-outline';
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.tabPill,
+                  isActive
+                    ? { backgroundColor: theme.colors.gold }
+                    : { backgroundColor: theme.colors.midnight, borderWidth: 1, borderColor: theme.colors.borderSilver },
+                ]}
+                onPress={() => setActiveTab(t)}
+              >
+                <Ionicons
+                  name={iconName}
+                  size={14}
+                  color={isActive ? theme.colors.obsidian : theme.colors.gold}
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={[theme.typography.label, {
+                  color: isActive ? theme.colors.obsidian : theme.colors.gold,
+                  fontSize: 12,
+                }]}>
+                  {t}
+                </Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
       </View>
     </View>
   );
@@ -188,7 +215,7 @@ export default function CommunityScreen({ navigation }) {
             style={styles.iconButton}
             onPress={() => navigation.navigate('Notifications')}
           >
-            <Ionicons name="notifications-outline" size={26} color={theme.colors.ivory} />
+            <Ionicons name="notifications-outline" size={20} color={theme.colors.ivory} />
             {unreadCount > 0 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
@@ -249,9 +276,7 @@ export default function CommunityScreen({ navigation }) {
         <TouchableOpacity style={styles.subTaskbarIcon}>
           <Ionicons name="home" size={26} color={theme.colors.ivory} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.subTaskbarIcon} onPress={() => navigation.navigate('Discover')}>
-          <Ionicons name="search" size={26} color={theme.colors.ivory} />
-        </TouchableOpacity>
+        {/* Search replaced by top bar search */}
         <TouchableOpacity style={styles.subTaskbarIcon}>
           <Ionicons name="play-circle-outline" size={28} color={theme.colors.ivory} />
         </TouchableOpacity>
@@ -261,126 +286,26 @@ export default function CommunityScreen({ navigation }) {
       </View>
 
       {/* ═══ Composer Modal (Instagram-style) ═══ */}
-      <Modal visible={showComposer} animationType="slide" transparent>
-        <KeyboardAvoidingView
-          style={styles.composerOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            activeOpacity={1}
-            onPress={() => setShowComposer(false)}
-          />
-          <View style={[styles.composerSheet, { backgroundColor: theme.colors.midnight }]}>
-            {/* Handle bar */}
-            <View style={[styles.sheetHandle, { backgroundColor: theme.colors.borderSilver }]} />
-
-            {/* Header */}
-            <View style={styles.composerHeader}>
-              <TouchableOpacity onPress={() => setShowComposer(false)}>
-                <Text style={[theme.typography.body, { color: theme.colors.parchment }]}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={[theme.typography.headingS, { color: theme.colors.ivory }]}>New Post</Text>
-              <TouchableOpacity
-                onPress={handlePost}
-                disabled={(!text.trim() && !imageUri) || isPosting}
-              >
-                <View style={[
-                  styles.postButton,
-                  { backgroundColor: (text.trim() || imageUri) && !isPosting ? theme.colors.gold : theme.colors.ash + '44' }
-                ]}>
-                  {isPosting ? (
-                    <ActivityIndicator size="small" color={theme.colors.obsidian} />
-                  ) : (
-                    <Text style={[theme.typography.label, {
-                      color: (text.trim() || imageUri) ? theme.colors.obsidian : theme.colors.ash,
-                      fontSize: 13,
-                    }]}>Post</Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            {/* Author row */}
-            <View style={styles.authorRow}>
-              <View style={[styles.composerAvatar, { backgroundColor: theme.colors.copper + '44' }]}>
-                {userProfile?.avatarUrl ? (
-                  <Image source={{ uri: userProfile.avatarUrl }} style={styles.composerAvatarImg} />
-                ) : (
-                  <Text style={{ color: theme.colors.copper, fontSize: 16, fontWeight: 'bold' }}>
-                    {initials}
-                  </Text>
-                )}
-              </View>
-              <View>
-                <Text style={[theme.typography.body, { color: theme.colors.ivory, fontWeight: '600' }]}>
-                  {displayName}
-                </Text>
-                {postLocation ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                    <Ionicons name="location" size={12} color={theme.colors.emerald} />
-                    <Text style={[theme.typography.caption, { color: theme.colors.emerald, marginLeft: 4, fontSize: 11 }]}>
-                      {postLocation}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-
-            {/* Text input */}
-            <TextInput
-              placeholder="What's on your mind? Share a travel tip..."
-              placeholderTextColor={theme.colors.ash}
-              style={[theme.typography.body, styles.composerInput, { color: theme.colors.ivory }]}
-              value={text}
-              onChangeText={setText}
-              multiline
-              autoFocus
-            />
-
-            {/* Image preview */}
-            {imageUri && (
-              <View style={styles.composerImageWrap}>
-                <Image source={{ uri: imageUri }} style={styles.composerImage} />
-                <TouchableOpacity
-                  style={styles.removeImageBtn}
-                  onPress={() => setImageUri(null)}
-                >
-                  <Ionicons name="close-circle" size={28} color="#fff" />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Toolbar */}
-            <View style={[styles.composerToolbar, { borderTopColor: theme.colors.borderSilver }]}>
-              <TouchableOpacity style={styles.toolbarBtn} onPress={pickImage}>
-                <Ionicons name="image-outline" size={24} color={theme.colors.gold} />
-                <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginLeft: 6, fontSize: 11 }]}>Photo</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.toolbarBtn} onPress={handleGetLocation}>
-                {isFetchingLocation ? (
-                  <ActivityIndicator size="small" color={theme.colors.gold} />
-                ) : (
-                  <>
-                    <Ionicons
-                      name="location-outline"
-                      size={24}
-                      color={postLocation ? theme.colors.emerald : theme.colors.gold}
-                    />
-                    <Text style={[theme.typography.caption, {
-                      color: postLocation ? theme.colors.emerald : theme.colors.parchment,
-                      marginLeft: 6, fontSize: 11,
-                    }]}>
-                      {postLocation || 'Location'}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        <ComposerModal
+          visible={showComposer}
+          onClose={() => setShowComposer(false)}
+          text={text}
+          setText={setText}
+          mediaItems={mediaItems}
+          setMediaItems={setMediaItems}
+          postLocation={postLocation}
+          isFetchingLocation={isFetchingLocation}
+          onGetLocation={handleGetLocation}
+          onPickImage={pickMedia}
+          onPost={handlePost}
+          isPosting={isPosting}
+          isUploading={isUploading}
+          uploadProgress={uploadProgress}
+          userProfile={userProfile}
+          displayName={displayName}
+          initials={initials}
+        />
+      <FloatingAIChat />
     </View>
   );
 }
@@ -406,11 +331,14 @@ const styles = StyleSheet.create({
   topRightIcons: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: 40,
     justifyContent: 'flex-end',
   },
   iconButton: {
-    padding: 4,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   badge: {
     position: 'absolute',
@@ -480,66 +408,14 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 16,
   },
-  composerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  postButton: {
+    postButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
     minWidth: 60,
     alignItems: 'center',
   },
-  authorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 12,
-  },
-  composerAvatar: {
-    width: 42, height: 42, borderRadius: 21,
-    justifyContent: 'center', alignItems: 'center',
-    overflow: 'hidden',
-  },
-  composerAvatarImg: { width: 42, height: 42, borderRadius: 21 },
-  composerInput: {
-    minHeight: 80,
-    maxHeight: 160,
-    fontSize: 16,
-    textAlignVertical: 'top',
-    marginBottom: 12,
-  },
-  composerImageWrap: {
-    position: 'relative',
-    marginBottom: 12,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  composerImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 16,
-  },
-  removeImageBtn: {
-    position: 'absolute',
-    top: 8, right: 8,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 16,
-  },
-  composerToolbar: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    paddingTop: 14,
-    gap: 24,
-  },
-  toolbarBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
+                  
   // ── Empty / Loading ──
   loadingContainer: {
     flex: 1,

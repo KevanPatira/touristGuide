@@ -23,7 +23,7 @@ exports.followUser = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Already following or request pending', status: existing.status });
     }
 
-    const status = target.isPrivate ? 'pending' : 'accepted';
+    const status = 'pending';
 
     await Follow.create({
       followerId: req.user.id,
@@ -31,17 +31,11 @@ exports.followUser = async (req, res) => {
       status,
     });
 
-    // For public accounts, update counts immediately
-    if (!target.isPrivate) {
-      await User.findByIdAndUpdate(req.user.id, { $inc: { followingCount: 1 } });
-      await User.findByIdAndUpdate(targetId, { $inc: { followerCount: 1 } });
-    }
-
     // Notification
     await Notification.create({
       recipientId: targetId,
       fromUserId: req.user.id,
-      type: target.isPrivate ? 'follow_request' : 'new_follower',
+      type: 'follow_request',
     });
 
     res.json({ success: true, status });

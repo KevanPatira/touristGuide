@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 const { width: SCREEN_W } = Dimensions.get('window');
 
 /**
- * Parallax header that scales and fades an image based on scroll position.
+ * Parallax header that scales an image based on scroll position.
  * @param {string} imageUri   - URI for the background image
  * @param {number} height     - Header height (default 300)
  * @param {Animated.Value} scrollY - Animated scroll value from parent ScrollView
@@ -33,12 +33,6 @@ export default function ParallaxHeader({
     extrapolateRight: 'clamp',
   });
 
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, height * 0.6],
-    outputRange: [1, 0],
-    extrapolateRight: 'clamp',
-  });
-
   return (
     <View style={[styles.container, { height }]}>
       <Animated.Image
@@ -59,7 +53,7 @@ export default function ParallaxHeader({
         colors={gradientColors}
         style={StyleSheet.absoluteFill}
       />
-      <Animated.View style={[styles.content, { opacity: headerOpacity }]}>
+      <Animated.View style={styles.content}>
         {children}
       </Animated.View>
     </View>

@@ -41,3 +41,5 @@ backend/.env
 # generated native folders
 /ios
 /android
+ionic_imports.txt
+*-firebase-adminsdk-*.json

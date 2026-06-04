@@ -3,8 +3,10 @@ const express = require('express');
 const router = express.Router();
 const { handleAIRequest } = require('../controllers/ai.controller');
 const { aiLimiter } = require('../middleware/rateLimiter');
+const { protect } = require('../middleware/auth.middleware');
 
 // POST /api/ai — Send a prompt to the AI assistant
-router.post('/', aiLimiter, handleAIRequest);
+// Flow: Auth (JWT) -> Rate Limiter -> AI Controller (Preprocessing, Cache, Model Router, AI Service)
+router.post('/', protect, aiLimiter, handleAIRequest);
 
 module.exports = router;
