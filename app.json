@@ -2,6 +2,7 @@
   "expo": {
     "name": "madApp",
     "slug": "madApp",
+    "scheme": "madapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -12,15 +13,32 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "plugins": [
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "touristGuide needs your microphone to capture speech for translation.",
+          "speechRecognitionPermission": "touristGuide uses speech recognition to translate what you say."
+        }
+      ]
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "touristGuide uses speech recognition to translate what you say.",
+        "NSMicrophoneUsageDescription": "touristGuide needs your microphone to capture speech for translation."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.kkrishr_06.madApp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
