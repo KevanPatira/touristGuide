@@ -12,11 +12,11 @@ import { useAuth } from '../constants/AuthContext';
 import { useTheme } from '../constants/ThemeContext';
 import useNotifications from '../hooks/useNotifications';
 import usePosts from '../hooks/usePosts';
+import { getMyAlbums } from '../services/album.service';
 
 import FloatingParticles from '../components/ui/FloatingParticles';
 import PostCard from '../components/ui/PostCard';
 import ComposerModal from '../components/ui/ComposerModal';
-import FloatingAIChat from '../components/ui/FloatingAIChat';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const tabs = ['For You', 'Trending', 'Nearby', 'Solo Travellers'];
@@ -27,6 +27,7 @@ export default function CommunityScreen({ navigation }) {
 
   const [activeTab, setActiveTab] = useState('Recent');
   const [showComposer, setShowComposer] = useState(false);
+  const [albums, setAlbums] = useState([]);
   const [text, setText] = useState('');
   const [mediaItems, setMediaItems] = useState([]);
   const [postLocation, setPostLocation] = useState('');
@@ -47,11 +48,25 @@ export default function CommunityScreen({ navigation }) {
     Animated.spring(fabScale, { toValue: 1, delay: 600, speed: 10, bounciness: 12, useNativeDriver: true }).start();
   }, []);
 
-  // ═══ Fetch posts when tab changes ═══
+  // ═══ Fetch posts and albums ═══
   useEffect(() => {
     const sort = activeTab === 'Trending' ? 'popular' : 'recent';
     fetchPosts(sort);
   }, [activeTab, fetchPosts]);
+
+  useEffect(() => {
+    const loadAlbums = async () => {
+      try {
+        const res = await getMyAlbums(1, 100);
+        setAlbums(res.data || []);
+      } catch (error) {
+        console.log('Failed to fetch albums for composer', error);
+      }
+    };
+    if (user) {
+      loadAlbums();
+    }
+  }, [user]);
 
   // ═══ Media Picker ═══
   const pickMedia = async () => {
@@ -304,8 +319,8 @@ export default function CommunityScreen({ navigation }) {
           userProfile={userProfile}
           displayName={displayName}
           initials={initials}
+          albums={albums}
         />
-      <FloatingAIChat />
     </View>
   );
 }

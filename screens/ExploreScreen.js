@@ -31,7 +31,6 @@ import PulsingDot from '../components/ui/PulsingDot';
 import FilterChip from '../components/ui/FilterChip';
 import PlaceCard from '../components/ui/PlaceCard';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
-import FloatingAIChat from '../components/ui/FloatingAIChat';
 import { CATEGORY_ICONS, CATEGORY_COLORS, CATEGORY_PLACEHOLDER_IMAGES, getPlaceImage } from '../constants/Categories';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -483,7 +482,6 @@ export default function ExploreScreen() {
           <View style={{ height: 100 }} />
         </Animated.ScrollView>
       )}
-      <FloatingAIChat />
     </View>
   );
 }

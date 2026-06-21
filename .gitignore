@@ -43,3 +43,6 @@ backend/.env
 /android
 ionic_imports.txt
 *-firebase-adminsdk-*.json
+check_ionicons.cjs
+search_unsplash.js
+ionic_usage.txt

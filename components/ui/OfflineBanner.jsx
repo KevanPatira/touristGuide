@@ -1,6 +1,7 @@
 // components/ui/OfflineBanner.jsx
 import React, { useEffect, useState, useRef } from 'react';
-import { Text, Animated, StyleSheet, SafeAreaView, View } from 'react-native';
+import { Text, Animated, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';

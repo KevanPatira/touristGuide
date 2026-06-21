@@ -35,13 +35,14 @@ const translationRoutes = require('./routes/translation.routes');
 const destinationRoutes = require('./routes/destination.routes');
 const reviewRoutes = require('./routes/review.routes');
 const savedPlacesRoutes = require('./routes/savedPlaces.routes');
-const aiRoutes = require('./routes/ai.routes');
 const postRoutes = require('./routes/post.routes');
 const commentRoutes = require('./routes/comment.routes');
 const followRoutes = require('./routes/follow.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const chatRoutes = require('./routes/chat.routes');
 const mediaRoutes = require('./routes/media.routes');
+const albumRoutes = require('./routes/album.routes');
+const achievementRoutes = require('./routes/achievement.routes');
 
 // ══════════════════════════════════════════════════════════
 //  Initialize Express App
@@ -101,13 +102,14 @@ app.use('/api/translations', translationRoutes);
 app.use('/api/destinations', destinationRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/saved', savedPlacesRoutes);
-app.use('/api/ai', aiRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/follows', followRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/albums', albumRoutes);
+app.use('/api/achievements', achievementRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

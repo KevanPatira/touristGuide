@@ -16,7 +16,7 @@ import styles from './styles/ImageTranslatorStyles';
 // API Keys
 const OCR_API_KEY = process.env.EXPO_PUBLIC_OCR_API_KEY;
 const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY;
-const OPENROUTER_MODEL = 'openai/gpt-oss-120b:free';
+const OPENROUTER_MODEL = 'google/gemma-3-4b-it:free';
 
 const INDIAN_LANGS = [
   { name: 'Hindi', native: 'हिंदी' },

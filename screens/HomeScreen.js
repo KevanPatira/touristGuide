@@ -61,7 +61,6 @@ const tools = [
   { id: '4', title: 'Currency Converter', icon: 'cash', gradient: ['#F59E0B20', '#F59E0B10'] },
   { id: '5', title: 'Weather Forecast', icon: 'cloud', gradient: ['#6366F120', '#6366F110'] },
   { id: '6', title: 'Emergency SOS', icon: 'alert', gradient: ['#EF444420', '#EF444410'] },
-  { id: '7', title: 'AI Assistant', icon: 'sparkles', gradient: ['#8B5CF620', '#8B5CF610'] },
 ];
 
 const TOOL_NAV = {
@@ -71,7 +70,6 @@ const TOOL_NAV = {
   'Currency Converter': 'CurrencyConverter',
   'Weather Forecast': 'Weather',
   'Emergency SOS': 'Emergency',
-  'AI Assistant': 'AIChat',
 };
 
 const TOOL_COLORS = {
@@ -81,7 +79,6 @@ const TOOL_COLORS = {
   'Currency Converter': '#F59E0B',
   'Weather Forecast': '#6366F1',
   'Emergency SOS': '#EF4444',
-  'AI Assistant': '#8B5CF6',
 };
 
 // ── Destination Mood Board ───────────────────────────
@@ -302,20 +299,8 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Icon row — AI + Notification, same size, same level */}
+        {/* Icon row — Notification, same size, same level */}
         <View style={styles.headerIconRow}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate('AIChat')}
-            style={[styles.headerIconBtn, {
-              backgroundColor: theme.colors.glassBg,
-              borderColor: theme.colors.glassStroke,
-              borderWidth: 1,
-            }]}
-          >
-            <Ionicons name="chatbubble-ellipses" size={20} color={theme.colors.gold} />
-          </TouchableOpacity>
-
           <TouchableOpacity
             style={[styles.headerIconBtn, {
               backgroundColor: theme.colors.glassBg,
@@ -368,7 +353,7 @@ export default function HomeScreen() {
           <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
           <StatItem value={32} suffix="" label="States" delay={600} />
           <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
-          <StatItem value={7} suffix="" label="Tools" delay={800} />
+          <StatItem value={6} suffix="" label="Tools" delay={800} />
         </View>
 
         <GradientDivider icon="compass" label="Essential Tools" />

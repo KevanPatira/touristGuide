@@ -45,19 +45,4 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-/**
- * Rate limiter for AI chat — 200 requests per hour in development, 20 in production.
- * Protects against excessive token usage and API costs.
- */
-const aiLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: process.env.NODE_ENV === 'development' ? 200 : 20,
-  message: {
-    success: false,
-    message: 'AI request limit reached. Please try again after an hour.',
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-module.exports = { generalLimiter, loginLimiter, registerLimiter, aiLimiter };
+module.exports = { generalLimiter, loginLimiter, registerLimiter };

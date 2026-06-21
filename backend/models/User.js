@@ -85,6 +85,23 @@ const UserSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'SavedPlace',
   }],
+  tripCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  achievementPoints: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  badges: [{
+    badgeId: { type: String, required: true },
+    name: { type: String, required: true },
+    tier: { type: Number, required: true },
+    points: { type: Number, default: 0 },
+    earnedAt: { type: Date, default: Date.now },
+  }],
   lastLogin: {
     type: Date,
     default: Date.now,

@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, KeyboardAvoidingView, Platform, Modal, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, KeyboardAvoidingView, Platform, Modal, ActivityIndicator, ScrollView, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../constants/ThemeContext';
 import AnimatedProgressBar from './AnimatedProgressBar';
@@ -22,8 +22,18 @@ export default function ComposerModal({
   userProfile,
   displayName,
   initials,
+  albums = [],
 }) {
   const { theme } = useTheme();
+  const [showAlbumPicker, setShowAlbumPicker] = useState(false);
+
+  const handleSelectAlbum = (album) => {
+    if (album && album.media && album.media.length > 0) {
+      // Append album media to current mediaItems
+      setMediaItems(prev => [...prev, ...album.media]);
+    }
+    setShowAlbumPicker(false);
+  };
 
   return (
     <Modal
@@ -111,7 +121,7 @@ export default function ComposerModal({
                 keyExtractor={(item, index) => item.uri || String(index)}
                 renderItem={({ item, index }) => (
                   <View style={styles.composerImageWrap}>
-                    <Image source={{ uri: item.uri }} style={styles.composerImage} />
+                    <Image source={{ uri: item.url || item.uri }} style={styles.composerImage} />
                     {item.type === 'video' && (
                       <View style={styles.videoBadge}>
                         <Ionicons name="videocam" size={14} color="#fff" />
@@ -141,11 +151,39 @@ export default function ComposerModal({
             </View>
           )}
 
+          {/* Album Picker Horizontal List */}
+          {showAlbumPicker && albums && albums.length > 0 && (
+            <View style={styles.albumPickerContainer}>
+              <Text style={[theme.typography.caption, { color: theme.colors.ivory, marginBottom: 8 }]}>Select an Album:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {albums.map((album) => (
+                  <TouchableOpacity
+                    key={album._id}
+                    style={styles.albumOption}
+                    onPress={() => handleSelectAlbum(album)}
+                  >
+                    {album.coverUrl ? (
+                      <Image source={{ uri: album.coverUrl }} style={styles.albumOptionCover} />
+                    ) : (
+                      <View style={[styles.albumOptionCover, { backgroundColor: '#333' }]} />
+                    )}
+                    <Text style={styles.albumOptionName} numberOfLines={1}>{album.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
           {/* Toolbar */}
           <View style={[styles.composerToolbar, { borderTopColor: theme.colors.borderSilver }]}>
             <TouchableOpacity style={styles.toolbarBtn} onPress={onPickImage}>
               <Ionicons name="image-outline" size={24} color={theme.colors.gold} />
               <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginLeft: 6, fontSize: 11 }]}>Photo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.toolbarBtn} onPress={() => setShowAlbumPicker(!showAlbumPicker)}>
+              <Ionicons name="albums-outline" size={24} color={theme.colors.gold} />
+              <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginLeft: 6, fontSize: 11 }]}>Album</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.toolbarBtn} onPress={onGetLocation}>
@@ -232,6 +270,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     padding: 4, borderRadius: 8,
   },
+  albumPickerContainer: {
+    marginVertical: 10,
+  },
+  albumOption: {
+    marginRight: 12,
+    alignItems: 'center',
+    width: 80,
+  },
+  albumOptionCover: {
+    width: 70,
+    height: 70,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  albumOptionName: {
+    color: '#fff',
+    fontSize: 10,
+    textAlign: 'center',
+  },
   composerToolbar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -242,10 +299,10 @@ const styles = StyleSheet.create({
   toolbarBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: 20,
-    marginRight: 12,
+    marginRight: 8,
   },
 });

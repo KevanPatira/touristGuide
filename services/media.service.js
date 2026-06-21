@@ -53,7 +53,7 @@ export const uploadMedia = async (uri, type = 'image', onProgress = null) => {
 
   // Use fetch to avoid Axios boundary issues with FormData in React Native
   const token = await AsyncStorage.getItem('authToken');
-  const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://10.160.113.31:5000/api';
+  const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://10.232.252.31:5000/api';
 
   const response = await fetch(`${baseUrl}/media/upload`, {
     method: 'POST',

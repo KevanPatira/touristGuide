@@ -1,19 +1,25 @@
-// screens/ProfileScreen.js
-import React, { useState, useEffect } from 'react';
+// screens/ProfileScreen.js — User profile with Gamification and Trip Albums
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Alert, KeyboardAvoidingView, Platform, Image, ActivityIndicator
+  View, Text, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, 
+  Image, ActivityIndicator, FlatList
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from '@react-navigation/native';
+
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { uploadMedia } from '../services/media.service';
+import { getMyAlbums } from '../services/album.service';
+import { getMyAchievements } from '../services/achievement.service';
 
 import GlassCard from '../components/ui/GlassCard';
-import PressableGoldButton from '../components/ui/PressableGoldButton';
 import StaggerRevealText from '../components/ui/StaggerRevealText';
 import FloatingParticles from '../components/ui/FloatingParticles';
+import BadgeIcon from '../components/ui/BadgeIcon';
+import BadgeDetailModal from '../components/ui/BadgeDetailModal';
 import styles from './styles/ProfileScreen.styles';
 
 function TabButton({ label, active, onPress }) {
@@ -32,20 +38,45 @@ function TabButton({ label, active, onPress }) {
 
 export default function ProfileScreen({ navigation }) {
   const { theme } = useTheme();
-  const { user, userProfile, updateUserProfile, logOut } = useAuth();
+  const { user, userProfile, updateUserProfile } = useAuth();
 
   const [activeTab, setActiveTab] = useState('Posts');
   const [profileImage, setProfileImage] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  
+  // Gamification & Albums state
+  const [albums, setAlbums] = useState([]);
+  const [myRank, setMyRank] = useState(null);
+  const [badgeModalVisible, setBadgeModalVisible] = useState(false);
+  const [loadingExtras, setLoadingExtras] = useState(true);
 
-  // Load profile from context
+  // Load basic profile
   useEffect(() => {
-    if (userProfile) {
-      if (userProfile.avatarUrl) {
-        setProfileImage(userProfile.avatarUrl);
-      }
+    if (userProfile?.avatarUrl) {
+      setProfileImage(userProfile.avatarUrl);
     }
   }, [userProfile]);
+
+  // Fetch albums and ranking when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      const fetchExtras = async () => {
+        try {
+          const [albumsRes, rankRes] = await Promise.all([
+            getMyAlbums(1, 10),
+            getMyAchievements()
+          ]);
+          setAlbums(albumsRes.data || []);
+          setMyRank(rankRes.data || null);
+        } catch (e) {
+          console.log('Error fetching profile extras:', e);
+        } finally {
+          setLoadingExtras(false);
+        }
+      };
+      fetchExtras();
+    }, [])
+  );
 
   const handlePickDP = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
@@ -77,8 +108,6 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-
-
   const initials = userProfile?.displayName
     ? userProfile.displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
     : user?.email ? user.email[0].toUpperCase() : '?';
@@ -87,93 +116,143 @@ export default function ProfileScreen({ navigation }) {
     <View style={[styles.container, { backgroundColor: theme.colors.obsidian }]}>
       <FloatingParticles count={5} />
       
-      {/* header */}
-      <View style={[styles.headerArea, { backgroundColor: theme.colors.midnight, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20 }]}>
-        <StaggerRevealText text="Profile" style={[theme.typography.displayS, { color: theme.colors.gold }]} />
-        <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-            <Ionicons name="settings-outline" size={24} color={theme.colors.ivory} />
-        </TouchableOpacity>
+      {/* Header */}
+      <View style={[styles.headerArea, { backgroundColor: theme.colors.midnight }]}>
+        <View style={styles.headerLeft}>
+          <Ionicons name="sparkles" size={20} color={theme.colors.gold} style={styles.headerIcon} />
+          <StaggerRevealText text="TouristSync" style={[theme.typography.displayS, { color: theme.colors.ivory }]} />
+        </View>
+        <Ionicons name="notifications-outline" size={24} color={theme.colors.ivory} />
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          style={styles.scrollArea}
-          contentContainerStyle={{ paddingBottom: 40 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Avatar + info */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView style={styles.scrollArea} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+          
+          {/* Avatar + Info */}
           <View style={styles.avatarSection}>
-            <TouchableOpacity style={[styles.avatar, { backgroundColor: theme.colors.copper }]} onPress={handlePickDP} disabled={uploadingImage}>
-              {profileImage ? (
-                <Image source={{ uri: profileImage }} style={styles.avatarImage} />
-              ) : (
-                <Text style={styles.avatarText}>{initials}</Text>
-              )}
-              {uploadingImage && (
-                <View style={styles.uploadOverlay}>
-                  <ActivityIndicator color={theme.colors.ivory} />
-                </View>
-              )}
-              <View style={[styles.cameraIcon, { backgroundColor: theme.colors.midnight, borderColor: theme.colors.obsidian }]}>
-                <Ionicons name="camera" size={16} color={theme.colors.ivory} />
+            <View style={styles.avatarWrapper}>
+              <TouchableOpacity style={[styles.avatar, { backgroundColor: theme.colors.copper }]} onPress={handlePickDP} disabled={uploadingImage}>
+                {profileImage ? (
+                  <Image source={{ uri: profileImage }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarText}>{initials}</Text>
+                )}
+                {uploadingImage && (
+                  <View style={styles.uploadOverlay}>
+                    <ActivityIndicator color={theme.colors.ivory} />
+                  </View>
+                )}
+              </TouchableOpacity>
+              <View style={styles.premiumBadge}>
+                <Text style={styles.premiumText}>PREMIUM</Text>
               </View>
-            </TouchableOpacity>
+            </View>
 
             <Text style={[theme.typography.headingM, styles.name, { color: theme.colors.ivory }]}>
               {userProfile?.displayName || 'Set your display name'}
             </Text>
             <Text style={[theme.typography.caption, styles.email, { color: theme.colors.parchment }]}>
-              @{userProfile?.username || 'username'}
+              {userProfile?.bio || 'Living the travel dream ✈️🌍'}
             </Text>
 
-            <View style={[styles.publicBadge, { backgroundColor: theme.colors.midnight }]}>
-              <Ionicons
-                name="globe-outline"
-                size={12}
-                color={theme.colors.emerald}
-              />
-              <Text style={[theme.typography.caption, { color: theme.colors.emerald, fontSize: 11 }]}>
-                Public Profile
-              </Text>
+            <View style={styles.actionButtonsRow}>
+              <TouchableOpacity style={styles.actionButton}>
+                <Text style={styles.actionButtonText}>Edit Profile</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Settings')}>
+                <Text style={styles.actionButtonText}>Settings</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
+          {/* Badges & Rankings Card */}
+          {!loadingExtras && myRank && (
+            <TouchableOpacity onPress={() => navigation.navigate('Rankings')}>
+              <GlassCard style={styles.badgesCard} glowOnPress={true}>
+                {myRank.latestBadge ? (
+                  <BadgeIcon badgeId={myRank.latestBadge.badgeId} size={60} />
+                ) : (
+                  <BadgeIcon badgeId="locked" size={60} locked={true} />
+                )}
+                
+                <View style={styles.badgesInfo}>
+                  <Text style={[styles.badgesTitle, { color: theme.colors.ivory }]}>
+                    Global Rank: #{myRank.rank}
+                  </Text>
+                  <Text style={[styles.badgesSubtitle, { color: theme.colors.gold }]}>
+                    {myRank.achievementPoints} pts • {myRank.badgeCount} Badges
+                  </Text>
+                  <TouchableOpacity onPress={() => setBadgeModalVisible(true)}>
+                    <Text style={{ color: '#4DA8DA', fontSize: 12 }}>View all badges</Text>
+                  </TouchableOpacity>
+                </View>
+                
+                <Ionicons name="chevron-forward" size={24} color={theme.colors.parchment} />
+              </GlassCard>
+            </TouchableOpacity>
+          )}
+
           {/* Social Stats */}
-          <GlassCard style={styles.statsCard} glowOnPress={false}>
-            <Text style={[theme.typography.headingS, { color: theme.colors.ivory, marginBottom: 12 }]}>Travel & Connections</Text>
-            <View style={styles.statsRow}>
-              <View style={styles.statBox}>
-                <Text style={[theme.typography.displayM, { color: theme.colors.gold }]}>{userProfile?.postCount || 0}</Text>
-                <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>Posts</Text>
-              </View>
-              <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
-              
-              <TouchableOpacity 
-                style={styles.statBox} 
-                onPress={() => navigation.navigate('Followers', { userId: user.uid, tab: 'followers', displayName: userProfile?.displayName })}
-              >
-                <Text style={[theme.typography.displayM, { color: theme.colors.gold }]}>{userProfile?.followerCount || 0}</Text>
-                <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>Followers</Text>
-              </TouchableOpacity>
-              
-              <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
-              
-              <TouchableOpacity 
-                style={styles.statBox}
-                onPress={() => navigation.navigate('Followers', { userId: user.uid, tab: 'following', displayName: userProfile?.displayName })}  
-              >
-                <Text style={[theme.typography.displayM, { color: theme.colors.gold }]}>{userProfile?.followingCount || 0}</Text>
-                <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>Following</Text>
-              </TouchableOpacity>
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={[theme.typography.displayM, { color: theme.colors.gold }]}>{myRank?.tripCount || 0}</Text>
+              <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>Trips</Text>
             </View>
-          </GlassCard>
+            <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
+            
+            <View style={styles.statBox}>
+              <Text style={[theme.typography.displayM, { color: theme.colors.gold }]}>{userProfile?.postCount || 0}</Text>
+              <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>Posts</Text>
+            </View>
+            <View style={[styles.statDivider, { backgroundColor: theme.colors.borderSilver }]} />
+            
+            <TouchableOpacity 
+              style={styles.statBox} 
+              onPress={() => navigation.navigate('Followers', { userId: user.uid, tab: 'followers', displayName: userProfile?.displayName })}
+            >
+              <Text style={[theme.typography.displayM, { color: theme.colors.gold }]}>{userProfile?.followerCount || 0}</Text>
+              <Text style={[theme.typography.caption, { color: theme.colors.parchment }]}>Followers</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Recent Trips / Albums */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.ivory }]}>Recent Trips</Text>
+            <TouchableOpacity style={styles.addTripBtn} onPress={() => navigation.navigate('CreateAlbum')}>
+              <Ionicons name="add" size={16} color="#4DA8DA" />
+              <Text style={styles.addTripText}>Add Trip</Text>
+            </TouchableOpacity>
+          </View>
+
+          {albums.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.albumsScroll}>
+              {albums.map((album) => (
+                <View key={album._id} style={styles.albumCard}>
+                  {album.coverUrl ? (
+                    <Image source={{ uri: album.coverUrl }} style={styles.albumCover} />
+                  ) : (
+                    <View style={[styles.albumCover, { backgroundColor: '#333' }]} />
+                  )}
+                  <LinearGradient
+                    colors={['transparent', 'rgba(0,0,0,0.8)']}
+                    style={styles.albumOverlay}
+                  >
+                    <Text style={styles.albumName} numberOfLines={2}>{album.name}</Text>
+                    <Text style={styles.albumCount}>{album.mediaCount} items</Text>
+                  </LinearGradient>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <TouchableOpacity style={styles.emptyAlbums} onPress={() => navigation.navigate('CreateAlbum')}>
+              <Ionicons name="images-outline" size={32} color="#666" />
+              <Text style={styles.emptyAlbumsText}>Create your first trip album</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Tabs */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: 20, borderBottomWidth: 1, borderBottomColor: theme.colors.borderSilver }}>
-            <TabButton label="Posts" active={activeTab === 'Posts'} onPress={() => setActiveTab('Posts')} />
+          <View style={styles.tabsRow}>
+            <TabButton label="My Posts" active={activeTab === 'Posts'} onPress={() => setActiveTab('Posts')} />
             <TabButton label="Following" active={activeTab === 'Following'} onPress={() => setActiveTab('Following')} />
           </View>
           
@@ -190,7 +269,17 @@ export default function ProfileScreen({ navigation }) {
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Badge Detail Modal */}
+      {myRank && (
+        <BadgeDetailModal 
+          visible={badgeModalVisible}
+          onClose={() => setBadgeModalVisible(false)}
+          userBadges={myRank.badges || []}
+          allMilestones={myRank.allMilestones || []}
+          tripCount={myRank.tripCount || 0}
+        />
+      )}
     </View>
   );
 }
-

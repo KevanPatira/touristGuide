@@ -33,8 +33,9 @@ import ChatScreen from './screens/ChatScreen';
 import NotificationsScreen from './screens/NotificationsScreen';
 import DiscoverScreen from './screens/DiscoverScreen';
 import SavedPostsScreen from './screens/SavedPostsScreen';
-import AIChatScreen from './screens/AIChatScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import CreateAlbumScreen from './screens/CreateAlbumScreen';
+import RankingsScreen from './screens/RankingsScreen';
 
 import SplashScreen from './screens/SplashScreen';
 
@@ -226,8 +227,9 @@ function AppContent() {
               <Stack.Screen name="Notifications" component={NotificationsScreen} />
               <Stack.Screen name="Discover" component={DiscoverScreen} />
               <Stack.Screen name="SavedPosts" component={SavedPostsScreen} />
-              <Stack.Screen name="AIChat" component={AIChatScreen} />
               <Stack.Screen name="Settings" component={SettingsScreen} />
+              <Stack.Screen name="CreateAlbum" component={CreateAlbumScreen} />
+              <Stack.Screen name="Rankings" component={RankingsScreen} />
             </>
           ) : (
             <>
