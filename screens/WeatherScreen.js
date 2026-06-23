@@ -1,5 +1,5 @@
 // screens/WeatherScreen.js - OpenWeatherMap API with GPS location
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,12 @@ import {
   ScrollView,
   Dimensions,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useTheme } from '../constants/ThemeContext';
+import { INDIA_STATES, INDIA_PLACES } from '../data/indiaPlaces';
 
 import GlassCard from '../components/ui/GlassCard';
 import StaggerRevealText from '../components/ui/StaggerRevealText';
@@ -22,7 +24,7 @@ import PressableGoldButton from '../components/ui/PressableGoldButton';
 const { width } = Dimensions.get('window');
 
 // ⚠️ Your OpenWeatherMap API key
-const API_KEY = process.env.EXPO_PUBLIC_WEATHER_API_KEY || '4f3e0fffe917327b826ee8237770c49c';
+const API_KEY = process.env.EXPO_PUBLIC_WEATHER_API_KEY || '';
 
 const WEATHER_ICONS = {
   Clear: 'sunny',
@@ -65,6 +67,74 @@ export default function WeatherScreen() {
   const [error, setError] = useState('');
   const [usingGPS, setUsingGPS] = useState(false);
 
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Generate list of unique cities, states, and place names for suggestions pool
+  const suggestionPool = useMemo(() => {
+    const pool = [];
+
+    // Add states
+    INDIA_STATES.forEach(state => {
+      pool.push({ name: state, state: state, type: 'state' });
+    });
+
+    // Add unique cities from places
+    const seenCities = new Set();
+    INDIA_PLACES.forEach(place => {
+      const cityKey = `${place.city}-${place.state}`;
+      if (!seenCities.has(cityKey) && place.city) {
+        seenCities.add(cityKey);
+        pool.push({ name: place.city, state: place.state, type: 'city' });
+      }
+    });
+
+    // Add specific high-popularity places themselves so users can search by place name
+    INDIA_PLACES.forEach(place => {
+      pool.push({ name: place.name, state: place.state, city: place.city, type: 'place' });
+    });
+
+    return pool;
+  }, []);
+
+  const suggestions = useMemo(() => {
+    const query = city.trim().toLowerCase();
+    if (!query) return [];
+
+    return suggestionPool
+      .filter(item =>
+        item.name.toLowerCase().includes(query) ||
+        (item.city && item.city.toLowerCase().includes(query)) ||
+        item.state.toLowerCase().includes(query)
+      )
+      .slice(0, 6);
+  }, [city, suggestionPool]);
+
+  const selectSuggestion = async (item) => {
+    let queryValue = item.name;
+    let apiSearchQuery = '';
+
+    if (item.type === 'place') {
+      apiSearchQuery = item.city;
+    } else if (item.type === 'state') {
+      const statePlace = INDIA_PLACES.find(p => p.state.toLowerCase() === item.name.toLowerCase());
+      apiSearchQuery = statePlace ? statePlace.city : item.name;
+    } else {
+      apiSearchQuery = item.name;
+    }
+
+    setCity(queryValue);
+    setShowSuggestions(false);
+    Keyboard.dismiss();
+
+    let searchCity = apiSearchQuery;
+    const isIndian = INDIA_STATES.some(c => c.toLowerCase() === searchCity.toLowerCase()) ||
+                     INDIA_PLACES.some(p => p.city.toLowerCase() === searchCity.toLowerCase());
+    if (isIndian && !searchCity.includes(',')) {
+      searchCity += ',IN';
+    }
+    await fetchWeatherByCity(searchCity);
+  };
+
   // On mount: detect location → fetch weather by coordinates
   useEffect(() => {
     loadByLocation();
@@ -82,7 +152,21 @@ export default function WeatherScreen() {
         await fetchWeatherByCity('Mumbai,IN');
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      
+      let loc = null;
+      try {
+        loc = await Location.getLastKnownPositionAsync({});
+      } catch (err) {
+        console.log('getLastKnownPositionAsync failed, requesting current position');
+      }
+
+      if (!loc) {
+        loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+          timeout: 7000,
+        });
+      }
+
       const { latitude, longitude } = loc.coords;
       await fetchWeatherByCoords(latitude, longitude);
     } catch (e) {
@@ -215,7 +299,7 @@ export default function WeatherScreen() {
   }
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.colors.obsidian }]} showsVerticalScrollIndicator={false}>
+    <ScrollView style={[styles.container, { backgroundColor: theme.colors.obsidian }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       <FloatingParticles count={8} />
 
       {/* Header */}
@@ -224,25 +308,62 @@ export default function WeatherScreen() {
         <Text style={[theme.typography.caption, { color: theme.colors.parchment, marginTop: 4 }]}>Live conditions · OpenWeatherMap</Text>
 
         {/* Search */}
-        <GlassCard style={[styles.searchRow, { backgroundColor: theme.colors.obsidian, marginTop: 24 }]} glowOnPress={false}>
-          <Ionicons name="search" size={20} color={theme.colors.goldMuted} />
-          <TextInput
-            style={[theme.typography.body, styles.cityInput, { color: theme.colors.ivory }]}
-            placeholder="Search any city or place..."
-            placeholderTextColor={theme.colors.parchment}
-            value={city}
-            onChangeText={setCity}
-            onSubmitEditing={searchWeather}
-            returnKeyType="search"
-          />
-          {/* GPS button */}
-          <TouchableOpacity style={[styles.gpsButton, { backgroundColor: theme.colors.emerald + '22' }]} onPress={loadByLocation}>
-            <Ionicons name="locate" size={18} color={theme.colors.emerald} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={searchWeather} style={{ paddingHorizontal: 4 }}>
-            <Ionicons name="arrow-forward-circle" size={32} color={theme.colors.gold} />
-          </TouchableOpacity>
-        </GlassCard>
+        <View style={{ position: 'relative', zIndex: 100 }}>
+          <GlassCard style={[styles.searchRow, { backgroundColor: theme.colors.obsidian, marginTop: 24 }]} glowOnPress={false}>
+            <Ionicons name="search" size={20} color={theme.colors.goldMuted} />
+            <TextInput
+              style={[theme.typography.body, styles.cityInput, { color: theme.colors.ivory }]}
+              placeholder="Search any city or place..."
+              placeholderTextColor={theme.colors.parchment}
+              value={city}
+              onChangeText={(text) => {
+                setCity(text);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              onSubmitEditing={searchWeather}
+              returnKeyType="search"
+            />
+            {/* GPS button */}
+            <TouchableOpacity style={[styles.gpsButton, { backgroundColor: theme.colors.emerald + '22' }]} onPress={loadByLocation}>
+              <Ionicons name="locate" size={18} color={theme.colors.emerald} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={searchWeather} style={{ paddingHorizontal: 4 }}>
+              <Ionicons name="arrow-forward-circle" size={32} color={theme.colors.gold} />
+            </TouchableOpacity>
+          </GlassCard>
+
+          {/* Suggestions Dropdown */}
+          {showSuggestions && suggestions.length > 0 && (
+            <View style={[styles.suggestionsBox, { backgroundColor: 'rgba(22, 27, 43, 0.98)', borderColor: theme.colors.gold + '50' }]}>
+              {suggestions.map((item, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[
+                    styles.suggestionRow,
+                    i < suggestions.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#252a3f' }
+                  ]}
+                  onPress={() => selectSuggestion(item)}
+                >
+                  <Ionicons
+                    name={item.type === 'state' ? 'map-outline' : 'location-outline'}
+                    size={16}
+                    color={theme.colors.gold}
+                  />
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={{ color: '#b0b4c3', fontSize: 11, marginTop: 2 }}>
+                      {item.type === 'state' ? 'State' : `${item.state}, India`}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
       </View>
 
       {/* Error */}
@@ -339,7 +460,7 @@ export default function WeatherScreen() {
         </View>
       )}
 
-      <View style={{ height: 40 }} />
+      <View style={{ height: 110 }} />
     </ScrollView>
   );
 }
@@ -429,5 +550,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     marginRight: 12,
+  },
+  suggestionsBox: {
+    position: 'absolute',
+    top: 72,
+    left: 0,
+    right: 0,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    zIndex: 100,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
   },
 });
